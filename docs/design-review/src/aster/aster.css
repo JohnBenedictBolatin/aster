@@ -986,10 +986,12 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #5b5b5b; }
   .aster-dialog { padding: 18px; max-height: 92dvh; }
 }
 
-/* Keep card geometry steady and use one white language for selection. */
+/* Selected surfaces inherit the same gradient as their category icon. */
 .aster-shell {
-  --selection-highlight: #fff;
   --selection-surface: #191919;
+  --selection-gradient: linear-gradient(120deg, #cce7ff, #8db9f4 52%, #ad91e8);
+  --selection-middle: #8db9f4;
+  --selection-glow: color-mix(in srgb, #8db9f4 22%, transparent);
 }
 .home-reading-grid { align-items: stretch; }
 .home-reading-card { min-height: 88px; grid-template-rows: auto 1fr auto; }
@@ -1002,43 +1004,43 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #5b5b5b; }
   .anatomy-structure-list button.selected
 ),
 .aster-shell .radlab-reference article.radlab-record-selected {
-  border-color: var(--selection-highlight);
-  background: var(--selection-surface);
-  box-shadow: inset 0 -2px var(--selection-highlight);
+  border: 1px solid transparent;
+  background: linear-gradient(var(--selection-surface), var(--selection-surface)) padding-box, var(--selection-gradient) border-box;
+  box-shadow: 0 0 16px var(--selection-glow);
   color: #fff;
 }
 .aster-shell .aster-nav button.active {
   position: relative;
-  background: var(--selection-surface);
+  background: linear-gradient(90deg, var(--selection-glow), transparent 90%), var(--selection-surface);
   color: #fff;
 }
 .aster-shell .aster-nav button.active::before {
   position: absolute;
   inset: 9px auto 9px 0;
   width: 2px;
-  background: var(--selection-highlight);
+  border-radius: 2px;
+  background: var(--selection-gradient);
   content: "";
 }
-.aster-shell :is(
-  .aster-nav button.active,
-  .home-reading-card[aria-pressed="true"],
-  .reading-cell.reading-selected,
-  .scenario-selector > button[aria-selected="true"],
-  .metric-index-tabs button[aria-selected="true"],
-  .instrument-reading[aria-pressed="true"],
-  .presenter-scenarios button.selected,
-  .anatomy-structure-list button.selected
-) .gradient-icon {
-  filter: brightness(0) invert(1);
-}
 .aster-shell .metric-toggle button[aria-pressed="true"] {
-  border: 1px solid var(--selection-highlight);
-  background: var(--selection-highlight);
-  color: #111;
+  border: 1px solid transparent;
+  background: linear-gradient(#303030, #303030) padding-box, var(--selection-gradient) border-box;
+  box-shadow: 0 0 10px var(--selection-glow);
+  color: #fff;
 }
 .aster-shell .metric-index-tabs button[aria-selected="true"] {
-  border-bottom-color: var(--selection-highlight);
+  position: relative;
+  border-bottom-color: transparent;
   color: #fff;
+}
+.aster-shell .metric-index-tabs button[aria-selected="true"]::after,
+.aster-shell :is(.answer-prompts button[aria-pressed="true"], .reference-prompts button[aria-pressed="true"])::after {
+  position: absolute;
+  inset: auto 0 -2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--selection-gradient);
+  content: "";
 }
 .aster-shell :is(
   .anatomy-view-controls button[aria-pressed="true"],
@@ -1046,19 +1048,31 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #5b5b5b; }
   .layer-tools button.on,
   .surface-control button.active
 ) {
-  border-color: var(--selection-highlight);
+  border: 1px solid transparent;
+  background: linear-gradient(var(--selection-surface), var(--selection-surface)) padding-box, var(--selection-gradient) border-box;
+  box-shadow: 0 0 10px var(--selection-glow);
   color: #fff;
 }
-.aster-shell .layer-tools button.on i { border-color: #fff; background: #fff; }
+.aster-shell .layer-tools button.on i { border-color: var(--selection-middle); background: var(--selection-middle); }
 .aster-shell :is(.timeline-event-selected, .home-event-selected, .recent-readings > button[aria-pressed="true"], .history-row[open] > summary) {
-  background: var(--selection-surface);
-  box-shadow: inset 2px 0 var(--selection-highlight);
+  position: relative;
+  background: linear-gradient(90deg, var(--selection-glow), transparent 45%), var(--selection-surface);
+  box-shadow: none;
 }
-.aster-shell :is(.timeline-event-selected .timeline-glyph, .home-event-selected > svg) { color: var(--selection-highlight); }
+.aster-shell :is(.timeline-event-selected, .home-event-selected, .recent-readings > button[aria-pressed="true"], .history-row[open] > summary)::before {
+  position: absolute;
+  inset: 5px auto 5px 0;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--selection-gradient);
+  content: "";
+}
 .aster-shell :is(.answer-prompts button[aria-pressed="true"], .reference-prompts button[aria-pressed="true"]) {
-  border-bottom-color: var(--selection-highlight);
+  position: relative;
+  border-bottom-color: transparent;
   color: #fff;
 }
+.presenter-scenario-label { display: inline-flex; align-items: center; gap: 8px; }
 @media (max-width: 520px) {
   .home-reading-card { min-height: 68px; grid-template-rows: none; }
 }

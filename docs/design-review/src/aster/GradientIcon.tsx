@@ -20,6 +20,15 @@ const palettes: Record<GradientIconName, [string, string, string]> = {
   cabin: ['#c7ffe7', '#64d9cf', '#7d92f5'], radiation: ['#ffe7a3', '#f7aa84', '#c189ed'],
 };
 
+export function selectionGradientStyle(name: GradientIconName): CSSProperties {
+  const [light, middle, dark] = palettes[name];
+  return {
+    '--selection-gradient': `linear-gradient(120deg, ${light}, ${middle} 52%, ${dark})`,
+    '--selection-middle': middle,
+    '--selection-glow': `color-mix(in srgb, ${middle} 22%, transparent)`,
+  } as CSSProperties;
+}
+
 function silhouette(name: GradientIconName): ReactNode {
   switch (name) {
     case 'heart': case 'recovery': return <path d="M16 27S3 19.5 3 11.4C3 4.3 12 2.8 16 9c4-6.2 13-4.7 13 2.4C29 19.5 16 27 16 27Z"/>;
