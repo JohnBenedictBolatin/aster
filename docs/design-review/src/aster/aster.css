@@ -995,6 +995,7 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #5b5b5b; }
 }
 .home-reading-grid { align-items: stretch; }
 .home-reading-card { min-height: 88px; grid-template-rows: auto 1fr auto; }
+.example-data-label { padding-left: 12px; border-left: 1px solid #303030; color: #a0a0a0; font-size: 9px; white-space: nowrap; }
 .aster-shell :is(
   .home-reading-card[aria-pressed="true"],
   .reading-cell.reading-selected,
@@ -1075,4 +1076,5 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #5b5b5b; }
 .presenter-scenario-label { display: inline-flex; align-items: center; gap: 8px; }
 @media (max-width: 520px) {
   .home-reading-card { min-height: 68px; grid-template-rows: none; }
+  .example-data-label { padding-left: 7px; font-size: 8px; }
 }

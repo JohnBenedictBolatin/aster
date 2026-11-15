@@ -130,6 +130,24 @@ function freshnessLabel(observation: Observation, now: string) {
   return 'Recent reading';
 }
 
+function hasCompleteMeasurementCategory(observation: Observation) {
+  const metric = METRICS[observation.metric];
+  return !!metric && typeof observation.unit === 'string' && observation.unit.trim() === metric.unit
+    && !!observation.method?.trim() && !!observation.context?.trim();
+}
+
+function isDisplayableCurrentReading(observation: Observation, now: string) {
+  return hasCompleteMeasurementCategory(observation) && observation.quality === 'usable'
+    && freshnessLabel(observation, now) === 'Recent reading';
+}
+
+function readingStatus(observation: Observation | undefined, now: string) {
+  if (!observation) return 'No current reading';
+  if (observation.quality !== 'usable') return 'Needs verification';
+  return hasCompleteMeasurementCategory(observation) && freshnessLabel(observation, now) === 'Recent reading'
+    ? 'Recent reading' : 'No current reading';
+}
+
 export default function AsterApp() {
   const [snapshot, setSnapshot] = useState<AsterSnapshot | null>(null);
   const snapshotRef = useRef<AsterSnapshot | null>(null);
@@ -197,7 +215,7 @@ export default function AsterApp() {
       snapshotRef.current = value;
       setSnapshot(value);
       setStorageMode(mode);
-      setShowPresenter(value.settings.presenterOpen);
+      setShowPresenter(false);
       setLiveClock(value.scenarioNow);
       playbackRef.current = value.scenarioNow;
       if (!saved) enqueueSave(value);
@@ -331,6 +349,7 @@ export default function AsterApp() {
   const activeComparison = baselineMemo?.[activeMetric];
   const recentPoints = workspace?.observations.filter((item) => item.metric === activeMetric
     && typeof item.value === 'number' && Number.isFinite(item.value)
+    && item.quality === 'usable' && hasCompleteMeasurementCategory(item)
     && Date.parse(item.at) <= nowMs && Date.parse(item.at) >= nowMs - 17 * 86_400_000)
     .sort((a, b) => a.at.localeCompare(b.at)) ?? [];
 
@@ -744,10 +763,7 @@ export default function AsterApp() {
                 <button type="button" className="text-button" onClick={() => { void liveMonitor.disconnect(); }}>Disconnect</button></div></div>}
           </section>);
   return <div className="aster-shell">
-    <MissionNavigation activePage={activePage} mobileOpen={mobileNavOpen} onNavigate={navigate} onClose={() => setMobileNavOpen(false)} onOpenPresenter={() => {
-      setShowPresenter(true);
-      commitSnapshot((current) => ({ ...current, settings: { ...current.settings, presenterOpen: true } }));
-    }}/>
+    <MissionNavigation activePage={activePage} mobileOpen={mobileNavOpen} onNavigate={navigate} onClose={() => setMobileNavOpen(false)}/>
 
     {urgentOpen && <UrgentGuidance onClose={() => setUrgentOpen(false)} />}
 
@@ -755,7 +771,7 @@ export default function AsterApp() {
       <header className="aster-topbar">
         <div className="aster-topbar-left"><button type="button" className="icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={19}/></button>
           <div className="mission-day"><span>MISSION DAY</span><strong>{String(missionDay).padStart(3, '0')}</strong><i aria-hidden="true"/></div>
-          <time className="topbar-time" dateTime={scenarioTime}>{stamp(scenarioTime)}</time></div>
+          <time className="topbar-time" dateTime={scenarioTime}>{stamp(scenarioTime)}</time><span className="example-data-label">Example crew data</span></div>
         <div className="aster-topbar-right"><div className={`storage-state ${storageMode === 'error' ? 'storage-error' : ''}`} role="status"><Save size={13}/>{saving ? 'Saving' : storageMode === 'desktop' ? 'On-device vault' : storageMode === 'error' ? 'Storage error' : storageMode === 'browser-fallback' ? 'Local fallback' : 'Saved locally'}</div>
           <button type="button" className="topbar-quiet urgent-entry" onClick={() => setUrgentOpen(true)} aria-label="Open urgent symptom guidance"><AlertTriangle size={15}/><span>Urgent concern</span></button>
           <button type="button" className="primary-button topbar-add" onClick={() => { setEntryChoiceOpen(true); setEntryTaskId(undefined); setFormError(''); }}><span>+ Add entry</span></button></div>
@@ -779,11 +795,12 @@ export default function AsterApp() {
               aside={<button className="quiet-link" onClick={()=>navigate('measurements')}>All readings <ArrowRight size={14}/></button>}/>
             <div className="home-reading-grid">{baseMetrics.map((metric)=>{
               const reading=baseReadings.find(item=>item.metric===metric);
-              const status=reading?.quality==='verify'?'Needs verification':reading?freshnessLabel(reading,scenarioTime):'No reading recorded';
+              const status=readingStatus(reading,scenarioTime);
+              const currentReading=reading&&isDisplayableCurrentReading(reading,scenarioTime)?reading:undefined;
               return <button key={metric} type="button" className={`home-reading-card ${selectedMetric===metric?'home-reading-selected':''}`} aria-pressed={selectedMetric===metric} style={selectionGradientStyle(metric)} onClick={()=>selectMetric(metric)}>
                 <span className="home-reading-label"><GradientIcon name={metric} size={23}/>{METRICS[metric].short}</span>
-                <strong className="instrument-value">{reading?metricValue(reading):'—'}</strong>
-                <span className={`home-reading-status ${reading?.quality==='verify'?'attention':''}`}>{status}</span>
+                <strong className="instrument-value">{currentReading?metricValue(currentReading):'—'}</strong>
+                <span className={`home-reading-status ${status==='Needs verification'?'attention':''}`}>{status}</span>
               </button>;
             })}</div>
           </section>
@@ -835,7 +852,7 @@ export default function AsterApp() {
         {activePage === 'measurements' && <>
           <header className="page-title-row"><h1>My readings</h1></header>
           <section className="workspace-section measurement-index"><div className="metric-index-tabs" role="tablist" aria-label="Health indicator">{baseMetrics.map((metric) => <button role="tab" type="button" aria-selected={selectedMetric === metric} key={metric} style={selectionGradientStyle(metric)} onClick={() => selectMetric(metric)}><GradientIcon name={metric}/>{METRICS[metric].short}</button>)}</div>
-            <div className="selected-measurement"><div className="measurement-main"><div className="metric-overview"><div><span className="measurement-unit-label">{METRICS[selectedMetric].label}</span><h2>{savedReading ? metricValue(savedReading) : 'No record available'}</h2><p>{savedReading ? stamp(savedReading.at) : 'Record a value to begin a comparison.'}</p></div><Pill kind={savedReading?.quality === 'verify' || (!!savedReading && freshnessLabel(savedReading, scenarioTime) !== 'Recent reading') ? 'attention' : 'quiet'}>{savedReading?.quality === 'verify' ? 'Needs verification' : savedReading ? freshnessLabel(savedReading, scenarioTime) : 'No measurement'}</Pill></div>
+            <div className="selected-measurement"><div className="measurement-main"><div className="metric-overview"><div><span className="measurement-unit-label">{METRICS[selectedMetric].label}</span><h2>{savedReading&&isDisplayableCurrentReading(savedReading,scenarioTime)?metricValue(savedReading):'No current reading'}</h2><p>{savedReading ? `Last recorded · ${stamp(savedReading.at)}` : 'Record a value to begin a comparison.'}</p></div><Pill kind={savedReading?.quality!=='usable'&&savedReading?'attention':'quiet'}>{readingStatus(savedReading,scenarioTime)}</Pill></div>
               {selectedMetric !== 'mood' && activeComparison && <details className="review-disclosure"><summary>View trend<span>Compare recorded values over time</span></summary><TrendChart comparison={activeComparison} points={recentPoints.map((item) => ({ id: item.id, at: item.at, value: Number(item.value), unit: item.unit }))} selectedId={selectedRecordId} onSelect={observePoint}/></details>}
               {selectedMetric === 'bp' && <p className="measurement-chart-note">Chart shows systolic pressure; both values remain in each record.</p>}
               {savedReading && <ObservationDetails observation={savedReading}/>}
@@ -843,9 +860,9 @@ export default function AsterApp() {
               <details className="review-disclosure comparison-panel"><summary>Compare with your usual readings<span>Previous range and matching days</span></summary><p>{changeCopy(selectedMetric, baselineMemo[selectedMetric])}</p>{baselineMemo[selectedMetric].median !== null && <div className="comparison-facts"><span><small>Usual middle value</small><strong>{baselineMemo[selectedMetric].median} {baselineMemo[selectedMetric].unit}</strong></span><span><small>Previous range</small><strong>{baselineMemo[selectedMetric].low ?? '—'}–{baselineMemo[selectedMetric].high ?? '—'} {baselineMemo[selectedMetric].unit}</strong></span><span><small>Days with matching readings</small><strong>{baselineMemo[selectedMetric].count}/14</strong></span></div>}</details>
               <details className="record-details collection-guide"><summary>Collection guide</summary><p>{METRICS[selectedMetric].meaning} {METRICS[selectedMetric].why}</p><ol className="guide-steps"><li>{METRICS[selectedMetric].how}</li><li>Record the actual method and conditions used. Mismatches do not count as comparable history.</li><li>{METRICS[selectedMetric].cannot}</li></ol>
               <button type="button" className="quiet-link" onClick={() => navigate('reference')}>Open supporting sources <ArrowRight size={14}/></button></details>
-            </div><aside className="recent-readings"><SectionHeading title="Recent records"/>{workspace.observations.filter((item) => item.metric === selectedMetric).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 18).map((item) => <button key={item.id} type="button" onClick={() => observePoint(item.id)} aria-pressed={selectedRecordId === item.id} style={selectionGradientStyle(selectedMetric)}><span><strong>{metricValue(item)}</strong><small>{item.context} · {item.method}</small></span><time>{stamp(item.at)}</time>{item.quality === 'verify' && <Pill kind="attention">Needs verification</Pill>}</button>)}
-              {workspace.observations.filter((item) => item.metric === selectedMetric).length === 0 && <p className="empty-message">No measurements recorded for this indicator.</p>}</aside></div></section>
-          {snapshot.liveObservations.length > 0 && <section className="workspace-section live-records-list"><SectionHeading title="Saved live records" detail="Separately stored · conditions need review"/>{snapshot.liveObservations.map((item) => <div key={item.id}><strong>{metricValue(item)}</strong><span>{stamp(item.at)} · {item.method} · {item.quality === 'verify' ? 'Needs verification' : 'Recorded'}</span></div>)}</section>}
+            </div><aside className="recent-readings"><SectionHeading title="Recent records"/>{workspace.observations.filter((item) => item.metric === selectedMetric && isDisplayableCurrentReading(item,scenarioTime)).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 18).map((item) => <button key={item.id} type="button" onClick={() => observePoint(item.id)} aria-pressed={selectedRecordId === item.id} style={selectionGradientStyle(selectedMetric)}><span><strong>{metricValue(item)}</strong><small>{item.context} · {item.method}</small></span><time>{stamp(item.at)}</time></button>)}
+              {workspace.observations.filter((item) => item.metric === selectedMetric && isDisplayableCurrentReading(item,scenarioTime)).length === 0 && <p className="empty-message">No current records. Older entries remain in History.</p>}</aside></div></section>
+          {snapshot.liveObservations.length > 0 && <section className="workspace-section live-records-list"><SectionHeading title="Saved live records" detail="Separately stored · conditions need review"/>{snapshot.liveObservations.map((item) => <div key={item.id}><strong>{isDisplayableCurrentReading(item,scenarioTime)?metricValue(item):'—'}</strong><span>{stamp(item.at)} · {readingStatus(item,scenarioTime)}</span></div>)}</section>}
         </>}
 
         {activePage === 'care' && <>
@@ -882,7 +899,7 @@ export default function AsterApp() {
         {activePage === 'investigations' && (!reviewOpen ? <ReviewOverview snapshot={viewSnapshot!} home={false} onOpen={openReview}/> :
           <GuidedReview scenario={scenarioId} workspace={workspace} now={scenarioTime} guidance={guidance} onAction={doReviewAction} onBack={()=>setReviewOpen(false)} onSkip={skipOption} onRestore={restoreOptions} onInspect={markInspection} inspectionOpen={inspectionOpen} onInspectionOpen={setInspectionOpen} onClose={()=>changeReviewStatus(true)} onReopen={()=>changeReviewStatus(false)}
             followups={workspace.tasks.filter(t=>t.episodeId===investigation.id).length>0 && <section className="review-followups"><h2>Follow-ups</h2>{workspace.tasks.filter(t=>t.episodeId===investigation.id).map(task=><button key={task.id} className="followup-link" onClick={()=>setReviewTaskId(task.id)}><strong>{task.status==='complete'?'Reviewed':task.resultId?'Result ready':Date.parse(task.due)<=nowMs?'Due now':'Planned'}</strong><span>{reviewDate(task.due)}</span><ArrowRight size={14}/></button>)}</section>}>
-            {scenarioId==='recovery' && <div className="review-readings">{(['heart','sleep'] as Metric[]).map(metric=>{const reading=baseReadings.find(r=>r.metric===metric);return <div key={metric}><GradientIcon name={metric}/><span>{METRICS[metric].short}</span><strong className="instrument-value">{reading?metricValue(reading):'No reading'}</strong><small>{reading ? reading.quality==='verify'?'Needs verification':freshnessLabel(reading,scenarioTime):'Add a reading to begin'}</small></div>;})}</div>}
+            {scenarioId==='recovery' && <div className="review-readings">{(['heart','sleep'] as Metric[]).map(metric=>{const reading=baseReadings.find(r=>r.metric===metric);return <div key={metric}><GradientIcon name={metric}/><span>{METRICS[metric].short}</span><strong className="instrument-value">{reading&&isDisplayableCurrentReading(reading,scenarioTime)?metricValue(reading):'—'}</strong><small>{readingStatus(reading,scenarioTime)}</small></div>;})}</div>}
             <details className="review-disclosure"><summary>{scenarioId==='recovery'?'Trends and readings':'Instrument readings'}<span>{scenarioId==='recovery'?'Compare recent readings with your usual pattern':'Inspect timestamps, units, and source records'}</span></summary>
               {scenarioId==='recovery'?<><div className="metric-toggle" style={selectionGradientStyle(selectedMetric)}><button aria-pressed={selectedMetric==='heart'} style={selectionGradientStyle('heart')} onClick={()=>selectMetric('heart')}>Pulse</button><button aria-pressed={selectedMetric==='sleep'} style={selectionGradientStyle('sleep')} onClick={()=>selectMetric('sleep')}>Sleep</button></div>{activeComparison&&<TrendChart comparison={activeComparison} points={recentPoints.map(item=>({id:item.id,at:item.at,value:Number(item.value),unit:item.unit}))} selectedId={selectedRecordId} onSelect={observePoint}/>}<p className="plain-note">Your usual pattern is a historical comparison, not a clinical reference range.</p>{savedReading&&<ObservationDetails observation={savedReading}/>}<button className="quiet-link" onClick={()=>setAnatomyOpen(true)}>Explore body</button></>
                 :scenarioId==='cabin'?<CabinPanel readings={workspace.cabinReadings} now={scenarioTime}/>:<RadiationPanel readings={workspace.radiationReadings} now={scenarioTime} selectedId={selectedInstrumentId} onSelect={setSelectedInstrumentId}/>}

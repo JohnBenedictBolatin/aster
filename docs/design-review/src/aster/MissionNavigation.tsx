@@ -1,4 +1,4 @@
-import { ArrowRight, Sparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { GradientIcon, selectionGradientStyle } from './GradientIcon';
 
 export type Page = 'log' | 'measurements' | 'investigations' | 'care' | 'history' | 'reference' | 'medical' | 'settings';
@@ -21,12 +21,11 @@ export function AsterMark() {
   return <svg className="aster-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.8 19 13l10.2 3-10.2 3L16 29.2 13 19 2.8 16 13 13 16 2.8Z" fill="currentColor" /><circle cx="24.5" cy="6.5" r="1.7" fill="currentColor" /></svg>;
 }
 
-export function MissionNavigation({ activePage, mobileOpen, onNavigate, onClose, onOpenPresenter }: {
+export function MissionNavigation({ activePage, mobileOpen, onNavigate, onClose }: {
   activePage: Page;
   mobileOpen: boolean;
   onNavigate: (page: Page) => void;
   onClose: () => void;
-  onOpenPresenter: () => void;
 }) {
   return <>
     <aside className={`aster-sidebar ${mobileOpen ? 'aster-sidebar-open' : ''}`}>
@@ -34,7 +33,7 @@ export function MissionNavigation({ activePage, mobileOpen, onNavigate, onClose,
         <button type="button" className="icon-button mobile-nav-close" aria-label="Close navigation" onClick={onClose}><X size={18} /></button>
       </div>
       <nav className="aster-nav" aria-label="Mission workspace">{MAIN_NAV.map(({ id, label }) => <button type="button" key={id} onClick={() => onNavigate(id)} className={activePage === id ? 'active' : ''} aria-current={activePage === id ? 'page' : undefined} style={selectionGradientStyle(id)}><GradientIcon name={id}/><span>{label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><nav className="aster-nav secondary-nav" aria-label="Help and preferences">{SECONDARY_NAV.map(({id,label})=><button key={id} onClick={()=>onNavigate(id)} aria-current={activePage===id?'page':undefined} className={activePage===id?'active':''} style={selectionGradientStyle(id)}><GradientIcon name={id} size={20}/><span>{label}</span></button>)}</nav><button type="button" className="sidebar-presenter" onClick={onOpenPresenter}><Sparkles size={15} /><span>Presenter controls</span><ArrowRight size={14} /></button></div>
+      <div className="sidebar-bottom"><nav className="aster-nav secondary-nav" aria-label="Help and preferences">{SECONDARY_NAV.map(({id,label})=><button key={id} onClick={()=>onNavigate(id)} aria-current={activePage===id?'page':undefined} className={activePage===id?'active':''} style={selectionGradientStyle(id)}><GradientIcon name={id} size={20}/><span>{label}</span></button>)}</nav></div>
     </aside>
     {mobileOpen && <button className="aster-nav-backdrop" aria-label="Close navigation" onClick={onClose} />}
   </>;
