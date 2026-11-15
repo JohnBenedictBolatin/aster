@@ -2,6 +2,8 @@
 
 The Aster workspace is built with React, TypeScript, Vite, React Three Fiber, and bundled reference assets.
 
+The hosted browser demo is [Aster on GitHub Pages](https://johnbenedictbolatin.github.io/aster/). It requires internet to load, needs no account, and keeps entries in the current browser on the current device.
+
 ```powershell
 npm ci
 npm run dev:web
