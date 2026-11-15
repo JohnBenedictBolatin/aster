@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
-  AlertTriangle, ArrowDownToLine, ArrowRight, ArrowUpRight, Check, CircleHelp,
+  AlertTriangle, ArrowDownToLine, ArrowRight, ArrowUpRight, CalendarClock, Check, CircleHelp,
   HeartPulse, Info, Menu, Radio,
   Save, Signal, X,
 } from 'lucide-react';
@@ -30,6 +30,7 @@ const statusText: Record<InvestigationStatus, string> = {
   open: 'Needs review', 'awaiting-measurement': 'Waiting for a check',
   'awaiting-reassessment': 'Ready for reassessment', 'ready-for-review': 'Ready for review', closed: 'Closed',
 };
+const SCENARIO_IDS: ScenarioId[] = ['recovery', 'cabin', 'radiation'];
 
 function stamp(value: string, withTime = true) {
   const at = new Date(value);
@@ -74,6 +75,40 @@ function metricValue(observation: Observation): string {
   if (observation.metric === 'bp') return `${observation.value}/${observation.secondary ?? '—'} ${observation.unit}`;
   if (observation.metric === 'sleep') return `${Number(observation.value).toFixed(1)} h`;
   return `${observation.value}${observation.unit ? ` ${observation.unit}` : ''}`;
+}
+
+function missionEventsForScenario(scenarioId: ScenarioId, workspace: ScenarioWorkspace, nowMs: number): MissionEvent[] {
+  const list: MissionEvent[] = [...workspace.events];
+  const fixtureDays = new Map<string, Observation[]>();
+  for (const item of workspace.observations.filter((record) => record.id.startsWith('FIXTURE-'))) {
+    const day = item.at.slice(0, 10);
+    fixtureDays.set(day, [...(fixtureDays.get(day) ?? []), item]);
+  }
+  for (const [day, records] of fixtureDays) {
+    const ordered = records.sort((a, b) => a.at.localeCompare(b.at));
+    const labels: Metric[] = ['heart', 'sleep', 'bp', 'temperature', 'glucose', 'mood'];
+    const detail = labels.map((metric) => ordered.find((record) => record.metric === metric))
+      .filter((record): record is Observation => !!record).map((record) => `${METRICS[record.metric].short} ${metricValue(record)}`).join(' · ');
+    list.push({ id: `TIMELINE-DAY-${scenarioId}-${day}`, at: ordered.at(-1)!.at, scenarioId, kind: 'measurement', title: 'Daily readings',
+      detail, provenance: 'Daily crew records', synthetic: true });
+  }
+  for (const item of workspace.observations.filter((record) => !record.id.startsWith('FIXTURE-'))) {
+    const alreadyListed = workspace.events.some((entry) => entry.kind === 'measurement' && entry.at === item.at);
+    if (!alreadyListed) list.push({ id: `TIMELINE-${item.id}`, at: item.at, scenarioId, kind: 'measurement', title: METRICS[item.metric].short,
+      detail: metricValue(item), provenance: item.provenance?.label ?? item.source, synthetic: item.synthetic });
+  }
+  for (const item of workspace.contexts) {
+    const alreadyListed = workspace.events.some((entry) => entry.at === item.at && (entry.kind === 'check-in' || entry.kind === 'workload'));
+    if (!alreadyListed) list.push({ id: `TIMELINE-${item.id}`, at: item.at, scenarioId, kind: 'check-in', title: item.kind, detail: item.value,
+      provenance: item.synthetic ? 'Crew check-in' : 'Crew-entered', synthetic: item.synthetic });
+  }
+  return list.filter((item) => Date.parse(item.at) <= nowMs).sort((a, b) => b.at.localeCompare(a.at));
+}
+
+function followupStatus(task: Followup, now: string) {
+  if (task.status === 'complete') return 'Reviewed';
+  if (task.resultId) return 'Result ready to review';
+  return Date.parse(task.due) <= Date.parse(now) ? 'Due now' : 'Planned';
 }
 
 function changeCopy(metric: Metric, comparison: BaselineComparison) {
@@ -299,34 +334,11 @@ export default function AsterApp() {
     && Date.parse(item.at) <= nowMs && Date.parse(item.at) >= nowMs - 17 * 86_400_000)
     .sort((a, b) => a.at.localeCompare(b.at)) ?? [];
 
-  const events = useMemo(() => {
-    if (!workspace) return [];
-    const list: MissionEvent[] = [...workspace.events];
-    const fixtureDays = new Map<string, Observation[]>();
-    for (const item of workspace.observations.filter((record) => record.id.startsWith('FIXTURE-'))) {
-      const day = item.at.slice(0, 10);
-      fixtureDays.set(day, [...(fixtureDays.get(day) ?? []), item]);
-    }
-    for (const [day, records] of fixtureDays) {
-      const ordered = records.sort((a, b) => a.at.localeCompare(b.at));
-      const labels: Metric[] = ['heart', 'sleep', 'bp', 'temperature', 'glucose', 'mood'];
-      const detail = labels.map((metric) => ordered.find((record) => record.metric === metric))
-        .filter((record): record is Observation => !!record).map((record) => `${METRICS[record.metric].short} ${metricValue(record)}`).join(' · ');
-      list.push({ id: `TIMELINE-DAY-${scenarioId}-${day}`, at: ordered.at(-1)!.at, scenarioId, kind: 'measurement', title: 'Daily readings',
-        detail, provenance: 'Daily crew records', synthetic: true });
-    }
-    for (const item of workspace.observations.filter((record) => !record.id.startsWith('FIXTURE-'))) {
-      const alreadyListed = workspace.events.some((entry) => entry.kind === 'measurement' && entry.at === item.at);
-      if (!alreadyListed) list.push({ id: `TIMELINE-${item.id}`, at: item.at, scenarioId, kind: 'measurement', title: METRICS[item.metric].short,
-        detail: metricValue(item), provenance: item.provenance?.label ?? item.source, synthetic: item.synthetic });
-    }
-    for (const item of workspace.contexts) {
-      const alreadyListed = workspace.events.some((entry) => entry.at === item.at && (entry.kind === 'check-in' || entry.kind === 'workload'));
-      if (!alreadyListed) list.push({ id: `TIMELINE-${item.id}`, at: item.at, scenarioId, kind: 'check-in', title: item.kind, detail: item.value,
-        provenance: item.synthetic ? 'Crew check-in' : 'Crew-entered', synthetic: item.synthetic });
-    }
-    return list.filter((item) => Date.parse(item.at) <= nowMs).sort((a, b) => b.at.localeCompare(a.at));
-  }, [workspace, scenarioId, nowMs]);
+  const events = useMemo(() => workspace ? missionEventsForScenario(scenarioId, workspace, nowMs) : [], [workspace, scenarioId, nowMs]);
+  const historyRows = useMemo(() => viewSnapshot ? SCENARIO_IDS.flatMap((key) => {
+    const at = key === viewSnapshot.activeScenario ? viewSnapshot.scenarioNow : viewSnapshot.scenarioTimes[key];
+    return missionEventsForScenario(key, viewSnapshot.workspaces[key], Date.parse(at)).map((event) => ({ scenarioId: key, event }));
+  }).sort((a, b) => b.event.at.localeCompare(a.event.at)) : [], [viewSnapshot]);
 
   const assessment = useMemo(() => evaluateAssessment({
     scenarioId, observations: workspace?.observations ?? [], contexts: workspace?.contexts ?? [],
@@ -565,6 +577,33 @@ export default function AsterApp() {
   }} />;
 
   const navigate = (destination: Page) => { setPage(destination); setReviewOpen(false); setMobileNavOpen(false); setFeedback(null); setSearch(''); };
+  const openCareTask = (key: ScenarioId, taskId: string) => {
+    if (key !== scenarioId) setScenario(key);
+    else { setPage('investigations'); setReviewOpen(true); }
+    setReviewTaskId(taskId);
+  };
+  const openHistoryEvent = (key: ScenarioId, event: MissionEvent) => {
+    const target = viewSnapshot?.workspaces[key];
+    if (!target) return;
+    let record = target.observations.find((item) => event.id === `TIMELINE-${item.id}`);
+    const dayPrefix = `TIMELINE-DAY-${key}-`;
+    if (!record && event.id.startsWith(dayPrefix)) {
+      const day = event.id.slice(dayPrefix.length);
+      const dayRecords = target.observations.filter((item) => item.at.startsWith(day));
+      record = dayRecords.find((item) => item.metric === selectedMetric)
+        ?? dayRecords.find((item) => item.metric === 'heart') ?? dayRecords[0];
+    }
+    if (!record && event.kind === 'measurement') {
+      const sameTime = target.observations.filter((item) => item.at === event.at);
+      record = sameTime.find((item) => item.metric === selectedMetric) ?? sameTime[0];
+    }
+    if (key !== scenarioId) setScenario(key);
+    setSelectedTimelineId(event.id);
+    if (record) {
+      setSelectedMetric(record.metric); setBaselineMetric(record.metric); setSelectedRecordId(record.id);
+      setReviewOpen(false); setPage('measurements');
+    } else { setReviewOpen(true); setPage('investigations'); }
+  };
   const observePoint = (recordId: string) => {
     const found = workspace?.observations.find((item) => item.id === recordId);
     setSelectedRecordId(recordId);
@@ -681,6 +720,13 @@ export default function AsterApp() {
   };
   const baseMetrics: Metric[] = ['heart', 'sleep', 'bp', 'temperature', 'glucose', 'mood'];
   const baseReadings = baseMetrics.map((metric) => workspace.observations.filter((item) => item.metric === metric).at(-1)).filter((item): item is Observation => !!item);
+  const currentReviewTasks = workspace.tasks.filter((task) => task.episodeId === investigation.id && task.status === 'open').sort((a, b) => a.due.localeCompare(b.due));
+  const careRows = viewSnapshot ? SCENARIO_IDS.flatMap((key) => {
+    const at = key === viewSnapshot.activeScenario ? viewSnapshot.scenarioNow : viewSnapshot.scenarioTimes[key];
+    return viewSnapshot.workspaces[key].tasks.filter((task) => Date.parse(task.createdAt) <= Date.parse(at))
+      .map((task) => ({ scenarioId: key, task, now: at }));
+  }).sort((a, b) => Number(a.task.status === 'complete') - Number(b.task.status === 'complete') || a.task.due.localeCompare(b.task.due)) : [];
+  const openReviewCount = viewSnapshot ? SCENARIO_IDS.filter((key) => viewSnapshot.workspaces[key].investigations.some((item) => item.scenarioId === key && item.status !== 'closed')).length : 0;
 
   const viewedTask = workspace.tasks.find(t=>t.id===reviewTaskId);
   const taskObservation = workspace.observations.find(o=>o.id===viewedTask?.resultId);
@@ -718,7 +764,73 @@ export default function AsterApp() {
       <main className="aster-content" key={activePage}>
         {feedback && <div className="aster-feedback" role="status"><Check size={17}/><div><strong>{feedback.title}</strong><span>{feedback.body}</span></div><button type="button" aria-label="Dismiss message" onClick={() => setFeedback(null)}><X size={16}/></button></div>}
 
-        {activePage === 'log' && <ReviewOverview snapshot={viewSnapshot!} home onOpen={openReview}/>}
+        {activePage === 'log' && <>
+          <header className="page-title-row"><div><h1>Home</h1><p>Readings, reviews, and recent mission activity.</p></div><span className="scenario-stamp"><i aria-hidden="true"/>{scenario.label}</span></header>
+          <section className="home-focus">
+            <GradientIcon name={scenarioId} size={46} glass/>
+            <div className="home-focus-copy"><div className="home-focus-meta"><Pill kind="neutral">{statusText[investigation.status]}</Pill><span>Current health review</span></div>
+              <h2>{guidance.title}</h2><p>{guidance.summary}</p><span className="home-focus-next">Next step · {guidance.next.reason}</span></div>
+            <div className="home-focus-actions"><button className="primary-button" onClick={()=>openReview(scenarioId)}>Continue review <ArrowRight size={15}/></button>
+              <button className="text-button" onClick={()=>navigate('investigations')}>All reviews <span className="home-count">{openReviewCount}</span></button></div>
+          </section>
+
+          <section className="workspace-section home-readings-section">
+            <SectionHeading title="Latest readings" detail="Select a reading to inspect its trend and collection details."
+              aside={<button className="quiet-link" onClick={()=>navigate('measurements')}>All readings <ArrowRight size={14}/></button>}/>
+            <div className="home-reading-grid">{baseMetrics.map((metric)=>{
+              const reading=baseReadings.find(item=>item.metric===metric);
+              const status=reading?.quality==='verify'?'Needs verification':reading?freshnessLabel(reading,scenarioTime):'No reading recorded';
+              return <button key={metric} type="button" className={`home-reading-card ${selectedMetric===metric?'home-reading-selected':''}`} aria-pressed={selectedMetric===metric} onClick={()=>selectMetric(metric)}>
+                <span className="home-reading-label"><GradientIcon name={metric} size={23}/>{METRICS[metric].short}</span>
+                <strong className="instrument-value">{reading?metricValue(reading):'—'}</strong>
+                <span className={`home-reading-status ${reading?.quality==='verify'?'attention':''}`}>{status}</span>
+              </button>;
+            })}</div>
+          </section>
+
+          <div className="home-dashboard-grid">
+            <div className="home-main-column">
+              <section className="workspace-section home-trend-section">
+                <SectionHeading title={`${METRICS[selectedMetric].short} over time`} detail="Recent observations compared with your earlier pattern."/>
+                {selectedMetric==='mood'
+                  ? <p className="plain-note">Mood is a self-reported check-in, not an instrument reading. The selected entry and its context are available below.</p>
+                  : <><p className="home-trend-summary">{activeComparison?changeCopy(selectedMetric,activeComparison):'No comparable history is available yet.'} This is a historical comparison, not a clinical range.</p>
+                    {activeComparison&&<TrendChart comparison={activeComparison} points={recentPoints.map(item=>({id:item.id,at:item.at,value:Number(item.value),unit:item.unit}))} selectedId={selectedRecordId} onSelect={observePoint}/>}</>}
+                {savedReading&&<details className="review-disclosure home-reading-details"><summary>Selected reading details<span>Method, source, time, and collection conditions</span></summary><ObservationDetails observation={savedReading}/></details>}
+              </section>
+
+              <section className="workspace-section home-activity-section">
+                <SectionHeading title="Recent mission activity" detail="Saved readings, check-ins, and crew actions"
+                  aside={<button className="quiet-link" onClick={()=>navigate('history')}>Full history <ArrowRight size={14}/></button>}/>
+                {events.slice(0,6).map(item=><button key={item.id} type="button" className={`home-event ${selectedTimelineId===item.id?'home-event-selected':''}`} onClick={()=>inspectTimelineEvent(item)}>
+                  <span><strong>{item.title}</strong><span>{item.detail}</span>{selectedTimelineId===item.id&&<small>Where this came from · {item.provenance}</small>}</span><time>{stamp(item.at)}</time><ArrowRight size={15}/>
+                </button>)}
+                {!events.length&&<p className="empty-message">No mission activity has been recorded for this review.</p>}
+              </section>
+            </div>
+
+            <aside className="home-side-column">
+              <section className="workspace-section anatomy-section home-anatomy-section">
+                <SectionHeading title="Body reference" detail="Interactive anatomy · unmeasured systems remain unassessed"
+                  aside={<button className="quiet-link" onClick={()=>setAnatomyOpen(true)}>Open explorer <ArrowRight size={14}/></button>}/>
+                <div className="body-viewer-wrap home-body-viewer"><Suspense fallback={<p className="empty-message">Loading the body reference…</p>}>
+                  <AnatomyViewer selectedMetric={selectedMetric} selectedStructure={bodyTargetForMetric(selectedMetric)??''} focusRequestKey={0}
+                    reducedMotion={window.matchMedia('(prefers-reduced-motion: reduce)').matches} onMetric={onAnatomyMetric} onStructure={onAnatomyStructure} compact/>
+                </Suspense></div>
+                <p className="plain-note home-anatomy-note">The model shows location only. Its colors do not indicate health status.</p>
+              </section>
+
+              <section className="workspace-section home-followups-section">
+                <SectionHeading title="Follow-ups" detail="Tasks saved for the current review"
+                  aside={<button className="quiet-link" onClick={()=>navigate('care')}>Care plan <ArrowRight size={14}/></button>}/>
+                {currentReviewTasks.slice(0,3).map(task=><button key={task.id} type="button" className="home-event" onClick={()=>openCareTask(scenarioId,task.id)}>
+                  <span><strong>{followupStatus(task,scenarioTime)}</strong><span>{task.title}</span></span><span className="home-followup-time"><CalendarClock size={13}/>{reviewDate(task.due)}</span><ArrowRight size={15}/>
+                </button>)}
+                {!currentReviewTasks.length&&<p className="empty-message">No follow-up is scheduled for this review.</p>}
+              </section>
+            </aside>
+          </div>
+        </>}
 
         {activePage === 'measurements' && <>
           <header className="page-title-row"><h1>My readings</h1></header>
@@ -734,6 +846,37 @@ export default function AsterApp() {
             </div><aside className="recent-readings"><SectionHeading title="Recent records"/>{workspace.observations.filter((item) => item.metric === selectedMetric).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 18).map((item) => <button key={item.id} type="button" onClick={() => observePoint(item.id)} aria-pressed={selectedRecordId === item.id}><span><strong>{metricValue(item)}</strong><small>{item.context} · {item.method}</small></span><time>{stamp(item.at)}</time>{item.quality === 'verify' && <Pill kind="attention">Needs verification</Pill>}</button>)}
               {workspace.observations.filter((item) => item.metric === selectedMetric).length === 0 && <p className="empty-message">No measurements recorded for this indicator.</p>}</aside></div></section>
           {snapshot.liveObservations.length > 0 && <section className="workspace-section live-records-list"><SectionHeading title="Saved live records" detail="Separately stored · conditions need review"/>{snapshot.liveObservations.map((item) => <div key={item.id}><strong>{metricValue(item)}</strong><span>{stamp(item.at)} · {item.method} · {item.quality === 'verify' ? 'Needs verification' : 'Recorded'}</span></div>)}</section>}
+        </>}
+
+        {activePage === 'care' && <>
+          <header className="page-title-row"><div><h1>Care plan</h1><p>Follow-up tasks from all health reviews.</p></div><button className="secondary-button" onClick={()=>navigate('investigations')}>Open health reviews <ArrowRight size={15}/></button></header>
+          <section className="workspace-section care-plan-section"><SectionHeading title="Open follow-ups" detail="Record a result when it is due, then review it with its original concern."/>
+            {careRows.filter(({task})=>task.status==='open').map(({scenarioId:key,task,now})=><button key={`${key}-${task.id}`} type="button" className="care-plan-row" onClick={()=>openCareTask(key,task.id)}>
+              <GradientIcon name={key} size={24}/><span><strong>{task.title}</strong><small>{SCENARIOS[key].label} · {followupStatus(task,now)}</small></span>
+              <span className="care-plan-due"><CalendarClock size={14}/>{reviewDate(task.due)}</span><ArrowRight size={16}/>
+            </button>)}
+            {!careRows.some(({task})=>task.status==='open')&&<p className="empty-message">No open follow-ups. A health review can suggest one when a later check would help.</p>}
+          </section>
+          <section className="workspace-section care-plan-section"><SectionHeading title="Completed follow-ups" detail="A reviewed result is recorded separately from closing its health review."/>
+            {careRows.filter(({task})=>task.status==='complete').map(({scenarioId:key,task,now})=><button key={`${key}-${task.id}`} type="button" className="care-plan-row completed" onClick={()=>openCareTask(key,task.id)}>
+              <GradientIcon name={key} size={24}/><span><strong>{task.title}</strong><small>{SCENARIOS[key].label} · {followupStatus(task,now)}</small></span>
+              <span className="care-plan-due"><CalendarClock size={14}/>{reviewDate(task.completedAt??task.due)}</span><ArrowRight size={16}/>
+            </button>)}
+            {!careRows.some(({task})=>task.status==='complete')&&<p className="empty-message">Reviewed follow-ups will appear here.</p>}
+          </section>
+        </>}
+
+        {activePage === 'history' && <>
+          <header className="page-title-row"><div><h1>Mission history</h1><p>Readings, check-ins, and actions across health reviews.</p></div></header>
+          <section className="workspace-section history-section"><SectionHeading title={`${historyRows.length} recorded events`} detail="Select an entry to inspect where it came from and open its linked record or review."/>
+            {historyRows.map(({scenarioId:key,event})=><details className="history-row" key={`${key}-${event.id}`}>
+              <summary><time>{stamp(event.at)}</time><span><strong>{event.title}</strong><small>{event.detail}</small></span><span className="history-scenario">{SCENARIOS[key].label}</span></summary>
+              <div className="history-row-details"><p>{event.detail}</p><small>Where this came from · {event.provenance}</small>
+                <button className="quiet-link" onClick={()=>openHistoryEvent(key,event)}>Open linked record or review <ArrowRight size={14}/></button>
+              </div>
+            </details>)}
+            {!historyRows.length&&<p className="empty-message">Mission events will appear here after a reading, check-in, or review action is saved.</p>}
+          </section>
         </>}
 
         {activePage === 'investigations' && (!reviewOpen ? <ReviewOverview snapshot={viewSnapshot!} home={false} onOpen={openReview}/> :
@@ -765,6 +908,18 @@ export default function AsterApp() {
             ['Hostile or closed environments', 'No live environmental or immune sensors are connected.'],
             ['Coverage', 'Aster’s six readings cover only a small part of the health risks studied in spaceflight. Unmeasured areas remain unassessed, not normal.'],
           ].map(([title, description]) => <article key={title}><span>{title}</span><p>{description}</p></article>)}</div></section>
+        </>}
+
+        {activePage === 'medical' && <>
+          <header className="page-title-row"><div><h1>Medical support</h1><p>Urgent guidance and an editable summary for the current review.</p></div></header>
+          <section className="medical-support-grid">
+            <article className="medical-support-block"><GradientIcon name="medical" size={46} glass/><div><span className="support-eyebrow">Always available</span><h2>Urgent health concern</h2>
+              <p>Follow the mission-approved medical plan and notify a crewmate or medical support now. Do not wait for Aster or a sensor result.</p>
+              <button className="primary-button" onClick={()=>setUrgentOpen(true)}>Open urgent guidance <ArrowRight size={15}/></button></div></article>
+            <article className="medical-support-block"><GradientIcon name="investigations" size={46} glass/><div><span className="support-eyebrow">Current review · {scenario.label}</span><h2>Prepare a review summary</h2>
+              <p>Aster can save an editable summary on this device. It does not contact a clinician or promise a response time.</p>
+              <button className="secondary-button" onClick={()=>setSupportOpen(true)}>Prepare summary <ArrowRight size={15}/></button></div></article>
+          </section>
         </>}
 
         {activePage === 'settings' && <>

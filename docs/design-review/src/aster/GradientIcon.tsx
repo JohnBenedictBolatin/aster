@@ -1,7 +1,7 @@
 import { useId, type CSSProperties, type ReactNode } from 'react';
 import type { Metric } from '../domain';
 
-export type GradientIconName = Metric | 'log' | 'measurements' | 'investigations' | 'reference' | 'settings' | 'recovery' | 'cabin' | 'radiation';
+export type GradientIconName = Metric | 'log' | 'measurements' | 'investigations' | 'care' | 'history' | 'reference' | 'medical' | 'settings' | 'recovery' | 'cabin' | 'radiation';
 
 // Category colors identify a measurement, never its health status.
 export const METRIC_COLORS: Record<Metric, string> = {
@@ -14,7 +14,9 @@ const palettes: Record<GradientIconName, [string, string, string]> = {
   glucose: ['#c7ffd9', '#65dfbb', '#56a6c4'], mood: ['#ffd0df', '#f494cf', '#a57ce5'],
   log: ['#b4f4ff', '#8ca8ff', '#bc8dea'], measurements: ['#baffdf', '#6edcc4', '#688ee7'],
   investigations: ['#ffe1ad', '#ff9eae', '#b78cf4'], reference: ['#d9caff', '#ae9aff', '#74cbea'],
-  settings: ['#c5e4ff', '#9fa9e5', '#c397d9'], recovery: ['#ffd0a0', '#ff718f', '#ac7af4'],
+  care: ['#c8ffd9', '#72dfbf', '#729de7'], history: ['#cce7ff', '#8db9f4', '#ad91e8'],
+  medical: ['#ffd2d8', '#f58a9c', '#9f8dec'], settings: ['#c5e4ff', '#9fa9e5', '#c397d9'],
+  recovery: ['#ffd0a0', '#ff718f', '#ac7af4'],
   cabin: ['#c7ffe7', '#64d9cf', '#7d92f5'], radiation: ['#ffe7a3', '#f7aa84', '#c189ed'],
 };
 
@@ -29,7 +31,10 @@ function silhouette(name: GradientIconName): ReactNode {
     case 'log': return <><path d="M6 4h20a2 2 0 0 1 2 2v22H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z"/><path d="M9 5v22m5-17h8m-8 6h8m-8 6h5" stroke="#252b53" strokeWidth="2" strokeLinecap="round"/></>;
     case 'measurements': return <><rect x="3" y="5" width="26" height="22" rx="5"/><path d="M7 17h4l3-6 4 11 3-5h4" fill="none" stroke="#173e3d" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/></>;
     case 'investigations': return <><path d="M6 3h15a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/><circle cx="19" cy="19" r="7" stroke="#f4deff" strokeWidth="2"/><path d="m24 24 5 5" stroke="#cda1ef" strokeWidth="4" strokeLinecap="round"/><path d="M8 9h10M8 14h5" stroke="#623951" strokeWidth="2" strokeLinecap="round"/></>;
+    case 'care': return <><path d="M8 4h12l5 5v18H8a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z"/><path d="M20 4v6h5M11 15h9m-9 5h5" stroke="#17483b" strokeWidth="2" strokeLinecap="round"/><path d="m11 10 1.5 1.5L15 9" stroke="#17483b" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>;
+    case 'history': return <><circle cx="16" cy="17" r="11"/><path d="M16 11v7l4 2M7 7H3v4m0-4a14 14 0 0 1 23 2" stroke="#273851" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></>;
     case 'reference': return <><path d="M3 5q7-3 13 1 6-4 13-1v22q-7-3-13 1-6-4-13-1V5Z"/><path d="M16 7v18M7 11l5 1m-5 5 5 1m8-6 5-1m-5 7 5-1" stroke="#3b365d" strokeWidth="1.8" strokeLinecap="round"/></>;
+    case 'medical': return <><path d="M12 3h8a3 3 0 0 1 3 3v20a3 3 0 0 1-3 3h-8a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/><path d="M16 9v12m-6-6h12" stroke="#522f42" strokeWidth="3.5" strokeLinecap="round"/></>;
     case 'settings': return <><path d="m13 2 6 0 1 4 4 2 4-1 3 5-3 3v3l3 3-3 5-4-1-4 2-1 4h-6l-1-4-4-2-4 1-3-5 3-3v-3l-3-3 3-5 4 1 4-2 1-4Z"/><circle cx="16" cy="16" r="5" fill="#202232"/></>;
     case 'cabin': return <><path d="M3 17 16 4l13 13v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V17Z"/><path d="M9 17h11q4 0 3-3m-14 8h8q4 0 3 3" fill="none" stroke="#1e4b53" strokeWidth="2" strokeLinecap="round"/></>;
     case 'radiation': return <><circle cx="16" cy="16" r="5"/><ellipse cx="16" cy="16" rx="14" ry="7" transform="rotate(-40 16 16)" fill="none" stroke="currentColor" strokeWidth="2.5"/><ellipse cx="16" cy="16" rx="14" ry="7" transform="rotate(40 16 16)" fill="none" stroke="currentColor" strokeWidth="2.5"/><circle cx="26" cy="7" r="3"/></>;
