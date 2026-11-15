@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Aster",
+  "version": "0.2.0",
+  "identifier": "org.spaceapps.aster",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:4173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Aster — Crew health, in context",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 760,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' asset: http://asset.localhost; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' asset: http://asset.localhost blob: ipc: http://ipc.localhost tauri: http://tauri.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/aster.ico"],
+    "shortDescription": "Offline crew health log demonstration",
+    "longDescription": "An offline astronaut health self-review demonstration with fictional data, local records, and NASA research references."
+  }
+}

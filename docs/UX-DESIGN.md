@@ -1,6 +1,8 @@
-# Tether — proposed mobile UX
+# Superseded exploration archive: Tether mobile UX
 
-October 28, 2026. Revised after user feedback: the first visual study was too plain. Planning concept for review, not a production design system. Mode: Operate. See [current friendly 3D study](concepts/tether-friendly-companion-v4.png), [product blueprint](BLUEPRINT.md), and [research](RESEARCH.md).
+This file preserves an earlier light/mobile exploration for historical reference only. Its Android-first platform, companion mascot, light palette, and screen structure are superseded by the accepted Aster desktop direction in [the current blueprint](BLUEPRINT.md). Do not use this archive as the visual or implementation source of truth.
+
+October 28, 2026. Revised during an earlier concept phase. See [research](RESEARCH.md) for dated source notes.
 
 ## Direction: a friendly companion inside a softly sculpted habitat
 

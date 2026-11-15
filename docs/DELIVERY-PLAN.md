@@ -1,92 +1,110 @@
-# Delivery plan and review gates
+# Aster implementation and delivery plan
 
-Planning date: October 28, 2026, Asia/Manila. The proposed schedule assumes a small team, but team size and skills are still unknown. Android is confirmed first. This file specifies work; none of the app functionality below has been implemented.
+This replaces the earlier Android-first, time-boxed proposal. The accepted target is an advanced offline Windows desktop demonstration plus a browser preview. No fixed deadline is set.
 
-## Preparation and eligibility
+## Build order and exit evidence
 
-Before setting a coding start date, verify the full challenge/resources, current 2026 rules on advance work and AI assistance, and the selected local event's deadlines. Research, notes, and generated concepts created now should retain their dates and be disclosed if reused. The current FAQ could not be retrieved; historical guidance is not sufficient to certify eligibility. See [research](RESEARCH.md).
-
-Preparation questions for a local lead: What research, wireframes, generated assets, starter code, and prior work may be prepared or reused? What disclosures are required? What are the local pitch limit, judging time, and official submission cutoff? This plan does not send any messages on the user's behalf.
-
-## Order of work once implementation is permitted
-
-| Stage | Time-box within a 48-hour event | Exit evidence |
+| Stage | Scope | Exit evidence |
 |---|---|---|
-| Read full brief and lock scope | Hours 0–3 | Requirement matrix updated; one scenario agreed; exact NASA source selected; P0 cut list committed |
-| Establish the local data spine | Hours 3–9 | Android build launches; fixture import, units/provenance, SQLite write/read, and restart survival work |
-| Complete the decision loop | Hours 9–19 | Today → evidence → check-in → action → reassessment → saved handoff functions end to end |
-| Add reliability and NASA evidence | Hours 19–28 | Bad/stale/missing data cases, evidence trace, handoff states, offline export, and one bounded NASA replay |
-| Test with people and on device | Hours 28–35 | Formative task results, corrected misunderstandings, Android accessibility/state checks, critical tests pass |
-| Make the submission understandable | Hours 35–42 | Demo recording, concise story, source/limitation documentation, working artifact and reproducibility instructions |
-| Freeze and submit | Hours 42–48 | Clean-device install, offline rehearsal, links checked from another session/device, actual submission confirmed |
+| 1. Foundation and identity | Neutral dark theme, Aster wordmark/icon, Home / My readings / Health reviews shell, versioned local browser store, Tauri/SQLite snapshot repository | Browser refresh retains actions; desktop save is transactional; all pages use Aster styling. |
+| 2. Recovery investigation | Personal baseline comparison, context capture, reaction-time demonstration, follow-up, explicit reassessment | Walkthrough explains change, data quality, action, and unresolved questions. |
+| 3. Cabin and radiation | Time-linked symptom/environment records; instrument provenance, units, timestamps, and gaps; distinct checklists | No causal or personal-dose claims; alternate branches remain explicit. |
+| 4. Presenter and telemetry | Reproducible fixtures, clock controls, follow-up outcomes, browser Web Bluetooth, native BLE adapter | Branches replay deterministically; signal loss/staleness requires verification; real data stays separate. |
+| 5. Packaging and rehearsal | Browser preview, Windows NSIS installer, app icon, exports, keyboard/reduced-motion/small-window review, demo script | Clean start/reopen/offline rehearsal; installer launches with the SQLite vault; judge can follow the full loop. |
 
-These are elapsed planning windows, not an instruction to stay awake for 48 hours. Allocate shifts/rest and protect the final verification buffer. Move submission earlier if the local event requires it.
+## Domain and persistence
 
-## Roles and capacity
+The browser store is IndexedDB with a localStorage fallback. The desktop uses SQLite in the per-user application data directory. Saves are serialized by the frontend and written in one SQLite transaction. The JSON snapshot is preserved alongside indexed records for observations, context, investigations, tasks, mission events, cabin/radiation readings, reaction sessions, handoffs, and separate live observations. Schema version 2 is checked before accepting a saved snapshot; version 1 browser snapshots migrate by initializing per-scenario clocks from their saved mission time.
 
-With four people: mobile/interaction, data/rules, science/validation, and UX/story/testing. Work from one shared schema and scenario; parallel work is useful only after those contracts are settled.
+`Observation` includes the existing metric value, unit, timestamp, method, context, data quality, mission phase, and provenance. Other domain records include `MissionEvent`, `BaselineComparison`, `Investigation`, `EvidenceReference`, `ReactionSession`, scenario workspaces, and `Handoff`.
 
-With two: one owns the app/data loop; the other owns science, UX testing, demo, and import preparation. Both review the explanation and state transitions.
+Scenario time is distinct from wall-clock time. The presenter may pause or advance the scenario clock without changing saved timestamps on unrelated live-device records. Every completed user action is written through the current repository interface.
 
-Solo: keep only one follow-up scenario, the bad-data branch, a simple urgent-route fixture, local handoff/export, and one separate NASA replay. Simulate transport explicitly. Cut live wearables, receiver, extra metrics, and elaborate onboarding. Reliability and clear reasoning outrank feature count.
+## Personal-history rule
 
-## First implementation backlog
+For a three-day assessment window, Aster compares against the immediately preceding 14 days. At least seven distinct comparable days are required. The latest recent observation selects the comparison cohort; metric, unit, method, collection conditions, and mission phase must match. Unusable, malformed, mismatched-unit, or missing recent readings do not become normal readings. The comparison describes historical change; it is not a clinical range or risk estimate.
 
-| ID | Outcome | Acceptance criterion |
+The current versioned demonstration rule uses the historical median and median absolute deviation to construct an illustrative band. It presents supporting observation IDs and contributing day counts. Numeric mood scoring is intentionally not inferred from a free-text check-in.
+
+## Scenario map
+
+| Scenario | Starting evidence | Crew review | Presenter branches | Unresolved boundary |
+|---|---|---|---|---|
+| Recovery and fatigue | Fictional sleep, resting pulse, workload, optional mood/fatigue context | Check measurement conditions; optional 60-second reaction demonstration; record follow-up | Improving, persistent pattern, sensor contact error | Demo reaction check is not a validated PVT or readiness screen. |
+| Cabin environment | Fictional CO₂ instrument records and overlapping headache check-in | Inspect source, time, and quality; record own symptoms; prepare handoff | Lower follow-up reading, uncertain sensor contact | Timing does not prove cause; no approved emergency procedure is embedded. |
+| Radiation context | Fictional instrument values and a visible gap; separately cited NASA RadLab reference; CSA CANS research link | Inspect source, device, unit, time, and missing interval; preserve context | Keep gap open, add instrument event | No dose is calculated; CANS context, NASA reference data, and demo readings are separate; none is personal astronaut dose. |
+
+Each scenario retains its own workspace. Scenario reset restores deterministic fixtures without clearing separate live Bluetooth records.
+
+## Released challenge-resource integration
+
+The official NASA and CSA resources inform the framing and explanation layer; none is treated as a clinical protocol or a source of Aster alert thresholds.
+
+| Challenge resource | Applied to Aster |
+|---|---|
+| NASA: [Five Hazards of Human Spaceflight](https://www.nasa.gov/hrp/hazards/) | Keeps radiation, isolation/confinement, distance from Earth, gravity, and closed environments distinct while noting they can interact. The app does not infer cause from one metric or event overlap. |
+| NASA: [Risks of Human Spaceflight](https://www.nasa.gov/hrp/risks/) | Grounds the Help & sources context and the coverage statement: the demo’s six indicators cannot assess all physiological, behavioral-performance, or radiation risks, nor every mission destination. |
+| NASA: [Ongoing HRP Research](https://www.nasa.gov/hrp/ongoing-hrp-research/) | Supports using sleep, activity/workload, and self-described wellbeing as separate context and explicitly marking other research areas (such as immune work) unassessed. Aster does not reproduce NASA measures. |
+| CSA: [Monitoring radiation for astronaut health](https://www.asc-csa.gc.ca/eng/news/articles/2026/2026-02-26-monitoring-radiation-astronaut-health.asp) | Adds context on continued development of the autonomous CANS neutron instrument. The link is attributed and kept separate from the historical NASA RadLab excerpt and fictional mission readings. |
+| CSA: [Why conduct science experiments in space?](https://www.asc-csa.gc.ca/eng/iss/science/why-do-we-conduct-science-experiments-in-space.asp) | Adds broad ISS and deep-space research context in Help & sources; it does not drive individual guidance or rules. |
+
+Summaries are short paraphrases with links to the original publishers. NASA and CSA are not represented as endorsing Aster, and the linked sites’ terms remain applicable. See the [evidence register](EVIDENCE-REGISTER.md) for source-by-source limitations and data provenance.
+
+## Feature matrix
+
+| Challenge need | Implemented in the demo | Remaining validation |
 |---|---|---|
-| T01 | Normalized observations | Reject unknown units, invalid numeric values, and future timestamps under the chosen policy; preserve original values and reasons |
-| T02 | Persistent local log | A completed check-in and amendment survive forced restart without duplication |
-| T03 | Scenario replay | Seeded fixtures reproduce the same observations and outcomes; demo flag appears in every related export |
-| T04 | Comparative baseline | Insufficient history produces no comparison; source/method/phase mismatches are excluded and disclosed |
-| T05 | Transparent evaluator | Every follow-up references rule version and triggering observations; fixture inputs yield expected states |
-| T06 | Today and evidence | User can reach explanation and raw observations; no placeholder “health score” |
-| T07 | Check-in/verification | Draft is preserved on back/restart; missing sensor data cannot block urgent symptom routing |
-| T08 | Care and reassessment | Acknowledgement is distinct from completion and resolution; reassessment is linked to its initiating concern |
-| T09 | Handoff/export | Preview shows exact included sections; private notes excluded by default; export identifies synthetic data and limitations |
-| T10 | Persistent queue | Draft/queued/transmitted/received/reviewed are separate; retry does not duplicate an acknowledged revision |
-| T11 | NASA replay | Source query, original times, instrument, units, terms, and snapshot hash recorded; replay does not enter the demo person's clinical rules |
-| T12 | Device/usability verification | Critical tests pass; airplane-mode walkthrough and large-text screenshots captured; user-study errors recorded |
+| Gather health indicators | Six manual metrics, units, time, method, conditions; optional heart-rate BLE | Device testing on a Windows BLE adapter and actual monitor. |
+| Self-assessment | Personal trend comparison with insufficient/verify states | Independent rule tests and a qualified medical review before any real use. |
+| Explain context | Linked scenario records, mission timeline, anatomy, and curated NASA/CSA source summaries | Review all science copy; source summaries are context, not validation of the demo rules. |
+| Support an action | Guided scenario checklist, follow-up tasks, reassessment, local handoff | Usability walkthrough with representative users. |
+| Long-duration / delayed connection | Deterministic scenario clock and local simulated delivery stages | No real transport or receiver is included. |
+| Offline startup | Bundled content, browser storage, SQLite desktop design | Rehearse packaged installer with network disabled. |
+| Accessibility | Keyboard-operable buttons and checks, reduced-motion CSS, text status | Keyboard, contrast, zoom, screen-reader, and failure-state review. |
 
-## Scientific review gate
+## Validation checklist
 
-The clinical mentor should evaluate intended use, chosen observations, baseline comparability, symptom language, alert priority, measurement-verification instructions, escalation route, and the boundary between study evidence and prototype parameters. Ask for concrete corrections, not a general endorsement.
+- [x] Baseline rules: insufficient history, mismatched conditions/method/phase/unit, invalid value, missing recent data, and future/current-window exclusion are covered by pure unit checks.
+- [ ] Sensor: bad contact and stale/absent samples require verification; urgent symptom review remains available without sensor data.
+- [ ] Scenario reset: exact same fixtures return; live readings are preserved.
+- [x] Privacy sanitizer: private notes and self-reports are excluded by default and included in a local handoff only after opt-in; unit checks cover private text paths.
+- [ ] Handoff delivery states: queued/transmitted/received/reviewed behavior persists across restart.
+- [x] Radiation source test: NASA RadLab instrument IDs, source timestamps, units, query URL, and separation from scenario records are covered by unit checks.
+- [ ] Export presentation: generate and inspect browser HTML/JSON exports with and without the explicit private-text option.
+- [x] Reaction comparison rule: matching version and input method are covered by unit checks.
+- [ ] Reaction interaction: premature input, missed cue, cancellation, hidden tab, and interrupted-session handling need interaction rehearsal.
+- [ ] Persistence: browser refresh and desktop process restart retain all completed actions with no partial save.
+- [ ] Synchronization: chart, anatomy selection, timeline evidence, investigation status, and follow-up state agree after replay.
+- [ ] Usability: keyboard-only navigation, visible focus, contrast, reduced motion, narrow window, anatomy fallback, and first-run empty/error states.
+- [ ] Presentation: 3-minute primary walkthrough and cabin/radiation alternate branches rehearsed offline.
+- [x] Desktop build: Windows NSIS installer generated with `cargo tauri build`; Tauri, SQLite vault, and native BLE source compile.
+- [ ] Desktop round-trip: install the generated bundle, create a record, close, reopen, and confirm it remains in the per-user SQLite database.
+- [ ] Physical sensor: verify standard BLE heart-rate capture, contact flags, disconnects, and stale-signal handling with a supported wearable.
 
-If no expert is available, narrow the claim: an interaction and data-handling prototype with simulated follow-up logic. Do not put an invented “clinically validated” label on it. Record which content was reviewed, by whom, and when only after a real review occurs.
+## Build prerequisites and commands
 
-## Data feasibility gate
+The browser requires Node.js and npm. The Windows desktop build additionally requires Rust with the MSVC toolchain, Microsoft C++ Build Tools with “Desktop development with C++,” and Microsoft Edge WebView2. Rust stable, Tauri CLI 2, and the existing Visual Studio 2022 C++ workload were used to generate the installer in this environment. The first full native build compiled the application and created the bundle; it did not include an install/reopen or physical wearable round trip.
 
-For RadLab, first retrieve an unfiltered narrow interval for one selected instrument. Inspect gaps, units, metadata, and time zone. Do not build a baseline or cumulative-dose estimate from the documentation's example query filtered to values above 2 microgray/hour: that example censors low readings. Keep a manifest with query, retrieval time, source, reuse terms, fields, transformation notes, and checksum.
+From `docs/design-review/`:
 
-For OSDR, inspect file-level public access before promising use. If processed assays are accessible, use a study-context view with participant and collection limitations. Do not require an application for controlled raw data during the hackathon.
+```powershell
+npm ci
+npm run dev
+npm run build
+npm run desktop:dev
+npm run desktop:build
+```
 
-## Tests worth writing
+Install the Tauri CLI after Rust is available with `cargo install tauri-cli --version "^2" --locked`. The generated NSIS installer is `src-tauri/target/release/bundle/nsis/Aster_0.2.0_x64-setup.exe` (24.35 MiB; SHA-256 `4AD014B69DC6362FD8B8EF4FA5F6A7A4E3A3ACE2BB96B6534F0F4A0BA6FFCD66`). The preview runs at `http://127.0.0.1:4173/` and needs no API key or account.
 
-- Rules: noisy sample, missing sample, stale sample, baseline absent, repeated genuine change, unresolved concern after failed repeat, and symptom-driven escalation despite apparently normal vitals.
-- Data: bpm versus incompatible units; HRV method mismatch; import idempotency; date/time conversion; corrections retain provenance.
-- Persistence: interrupt local save/queue transaction, restart app, verify no half-written handoff.
-- Transport, if real: retry same revision, receive out of order, reject mismatched acknowledgement, and distinguish receiver receipt from clinician review.
-- Privacy: excluded note absent from readable export, JSON, queue payload, logs, and notification preview.
-- UI: one meaningful end-to-end flow on an Android emulator/device plus manual screen-reader/large-text inspection. Do not spend time snapshot-testing every label.
+## Delivery claim ledger
 
-## Submission package
-
-Prepare the official project page in the format actually required; an accessible source repository and license/dependency attributions; a tested Android APK or permitted install path; a short video; architecture and source notes; precise NASA-data usage; reproducible synthetic scenarios; meaningful test results; limitations and future validation; and accurate AI/prior-work disclosures under the current rules.
-
-A claim ledger should distinguish **implemented**, **simulated**, **planned**, and **validated**. Never include mockup-only screens in the video as if they are working features. The README should tell a judge how to run the demo without an API key or a real health account.
-
-## Stop conditions and cuts
-
-- If there is no working Android data loop by hour 9: cut external adapters and use local fixtures.
-- If the complete scenario is not working by hour 19: cut additional domains/screens, protect handoff and restart persistence.
-- If a NASA source cannot be verified: document the failure and choose another permitted accessible source; do not fabricate data provenance.
-- After hour 35: accept only fixes that improve correctness, clarity, installability, or presentation. No new product branches.
-
-## Concrete next decisions
-
-1. Confirm the full 2026 statement and local rules.
-2. Confirm team skills, available Android hardware, and whether Flutter is familiar.
-3. Review the revised friendly 3D companion direction; the initial journal treatment was rejected as too plain.
-4. Select one public data sample and one deterministic synthetic scenario.
-5. Schedule qualified content review and five formative testers where feasible.
-
-Completing those gates turns this researched proposal into a defensible build commitment.
+| Claim | State |
+|---|---|
+| Aster browser experience and bundled scenario fixtures | Production browser build passes; interactive visual rehearsal still required. |
+| Fictional branches and simulated communication delays | Implemented as local presentation behavior. |
+| Browser IndexedDB and fallback | Implemented in source; refresh/restart flow requires verification. |
+| Tauri SQLite transactional vault | Compiled into the Windows app; installed save/reopen round trip still required. |
+| Native Windows BLE | Compiled with `btleplug`; physical wearable behavior is not verified. |
+| Windows installer | Generated at `src-tauri/target/release/bundle/nsis/Aster_0.2.0_x64-setup.exe`; installation is not yet smoke-tested. |
+| Clinical validity or NASA endorsement | Not claimed. |

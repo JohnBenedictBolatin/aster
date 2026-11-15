@@ -4,6 +4,7 @@ export type Dataset = 'demo' | 'personal';
 export type RecordQuality = 'usable' | 'verify';
 export type TaskStatus = 'open' | 'complete' | 'cancelled';
 export type TaskKind = 'measurement' | 'routine';
+export type ObservationProvenance = { kind: 'scenario-fixture' | 'scenario-branch' | 'manual' | 'device'; label: string; recordedHourUtc?: number };
 
 export type Observation = {
   id: string;
@@ -20,6 +21,8 @@ export type Observation = {
   dataset: Dataset;
   quality: RecordQuality;
   guidanceVersion: string;
+  missionPhase?: string;
+  provenance?: ObservationProvenance;
   linkedTask?: string;
 };
 
@@ -32,6 +35,7 @@ export type ContextEntry = {
   dataset: Dataset;
   synthetic: boolean;
   episodeId?: string;
+  private?: boolean;
 };
 
 export type Followup = {
@@ -186,12 +190,12 @@ export function isComparable(a: Observation, b: Observation) {
 export function makeDemoData(now = new Date()) {
   const readings: Observation[] = [];
   const samples: Record<Metric, Array<number | string | [number, number]>> = {
-    heart: [72, 75, 73, 71, 74, 70, 112],
-    bp: [[118, 76], [120, 78], [117, 75], [119, 77], [116, 74], [118, 76], [122, 79]],
-    glucose: [92, 98, 95, 91, 99, 94, 102],
-    temperature: [36.6, 36.7, 36.5, 36.6, 36.7, 36.5, 36.8],
-    sleep: [7.3, 6.8, 7.1, 6.4, 7.6, 7.0, 6.8],
-    mood: ['Okay', 'Good', 'Good', 'Okay', 'Very good', 'Good', 'Okay'],
+    heart: [64, 62, 65, 63, 64, 62, 64],
+    bp: [[118, 76], [117, 75], [116, 74], [119, 76], [118, 75], [116, 74], [117, 75]],
+    glucose: [89, 92, 91, 88, 94, 90, 91],
+    temperature: [36.6, 36.7, 36.6, 36.8, 36.7, 36.6, 36.8],
+    sleep: [7.5, 7.8, 7.6, 7.9, 7.4, 7.7, 7.8],
+    mood: ['Good', 'Good', 'Very good', 'Good', 'Good', 'Very good', 'Good'],
   };
   for (const metric of METRIC_ORDER) {
     samples[metric].forEach((sample, index) => {
@@ -203,28 +207,21 @@ export function makeDemoData(now = new Date()) {
       readings.push({
         id: `DEMO-${metric}-${index + 1}`, metric, value, secondary, unit: METRICS[metric].unit,
         at: observed.toISOString(), method: 'Crew self-measurement',
-        context: metric === 'glucose' ? (index === 6 ? 'After a meal' : 'Fasting')
+        context: metric === 'glucose' ? 'Fasting'
           : metric === 'temperature' ? 'Oral'
             : metric === 'sleep' ? 'Main sleep period'
               : metric === 'mood' ? 'At this check-in' : metric === 'bp' ? 'Seated · at rest' : 'At rest · seated',
         note: '',
-        source: 'Practice scenario', synthetic: true, dataset: 'demo',
+        source: 'Crew self-measurement', synthetic: true, dataset: 'demo',
         quality: 'usable', guidanceVersion: GUIDANCE_VERSION,
       });
     });
   }
-  const selected = readings.find((item) => item.id === 'DEMO-heart-7')!;
-  const episodeId = 'DEMO-EPISODE-1';
   return {
     observations: readings,
     contexts: [] as ContextEntry[],
-    tasks: [{ id: 'TASK-VERIFY-1', kind: 'measurement' as const, observationId: selected.id, episodeId,
-      title: 'Repeat the heart-rate measurement at rest',
-      due: new Date(now.getTime() - 15 * 60 * 1000).toISOString(), createdAt: new Date(now.getTime() - 20 * 60 * 1000).toISOString(),
-      status: 'open' as const, dataset: 'demo' as const, synthetic: true }],
-    episodes: [{ id: episodeId, observationId: selected.id, taskId: 'TASK-VERIFY-1', resultIds: [],
-      openedAt: new Date(now.getTime() - 20 * 60 * 1000).toISOString(), status: 'open' as const,
-      dataset: 'demo' as const, synthetic: true }],
+    tasks: [] as Followup[],
+    episodes: [] as ReviewEpisode[],
   };
 }
 

@@ -1,11 +1,18 @@
-# Tether design review
+# Aster browser preview
 
-Interactive desktop direction prototype for Tether, built with React, TypeScript, Vite, and React Three Fiber. Start with `npm run dev` and open `http://127.0.0.1:4173/`; create a production web bundle with `npm run build`.
+The Aster workspace is built with React, TypeScript, Vite, React Three Fiber, and bundled reference assets.
 
-The prototype has four primary workflows: Today, Measurements, Care Plan, and History. Today combines six compact reading summaries, a chart, a clear rotatable 3D anatomy view, and the next action. Selecting a reading focuses its related anatomy when supported. History brings chart and timeline views together. Reference Library and Settings remain utility pages. Selecting unsupported structures reports **Not assessed**. Measurements include source, method, time, and context; optional check-ins include symptoms, exercise, meal/hydration, and sleep quality.
+```powershell
+npm ci
+npm run dev:web
+```
 
-The seeded crew and measurements are synthetic. New entries, context, and follow-ups are held in page memory and clear when refreshed. The preview works offline after the assets load. It does not connect sensors, transmit medical records, diagnose conditions, or supply a mission clinical protocol. The planned Tauri/SQLite desktop application remains a later implementation stage.
+Open the local URL Vite prints (starts at `http://127.0.0.1:4174/` and advances to another port if needed). Keep the server running while you review changes; edits update in the browser automatically. Create a browser bundle with `npm run build`. The preview uses IndexedDB with a localStorage fallback and needs no API key or account.
 
-## Anatomy assets
+The primary destinations are **Home**, **My readings**, and **Health reviews**. **Help & sources** and **Settings** are secondary; presenter controls open separately. Manual entries, follow-up actions, notes, handoffs, and investigation changes persist locally. Browser Web Bluetooth is optional; live records are stored separately from investigation records. NASA and Canadian Space Agency source summaries are bundled; external source pages open only when selected.
+
+For Windows desktop setup, see [the root README](../../README.md) and [delivery plan](../../docs/DELIVERY-PLAN.md). The Tauri/SQLite vault and native BLE code compile, and the NSIS installer is generated under `src-tauri/target/release/bundle/nsis/`. Installing it and verifying saved records across restart remain outstanding; physical BLE hardware has not been tested.
+
+## Anatomy assets and attribution
 
 The BodyParts3D body surface and system meshes are locally bundled. The heart and lung meshes are separately licensed source assets. Attribution and adaptations are documented in `public/assets/anatomy/LICENSE.md` and adjacent credit files. Rebuild the grouped body asset with `scripts/prepare_bodyparts3d.py`.

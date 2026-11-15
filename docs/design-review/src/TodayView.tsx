@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowRight, CalendarClock, Pause, Play, Plus } from 'lucide-react';
 import { MetricGlyph } from './TetherIcons';
 import type { HeartRateMonitorState } from './useHeartRateMonitor';
@@ -7,10 +7,11 @@ import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { LiveHeartRateChart } from './LiveHeartRateChart';
 import { assessmentPriority, type AssessmentState, type ReadingAssessment } from './assessment';
-import { compareObservation, formatValue, fullDate, latestForMetric, localStamp, type ContextEntry, type Followup, type Metric, type MetricInfo, type Observation } from './domain';
+import { compareObservation, formatValue, fullDate, latestForMetric, localStamp, type ContextEntry, type Dataset, type Followup, type Metric, type MetricInfo, type Observation } from './domain';
 import { ObservationChart } from './ObservationChart';
 
 type Props = {
+  dataset: Dataset;
   metrics: Record<Metric, MetricInfo>;
   metricOrder: Metric[];
   observations: Observation[];
@@ -37,11 +38,15 @@ type Props = {
 type SupportTab = 'pressure' | 'sleep' | 'activity';
 
 
-function conciseState(state: AssessmentState) {
-  return ({ urgent: 'Urgent', attention: 'Needs attention', verify: 'Conditions missing', within: 'Good', unconfigured: 'Not assessed', missing: 'No reading', stale: 'Update reading' } as const)[state];
+function conciseState(state: AssessmentState, _dataset: Dataset) {
+  return ({ urgent: 'Bad', attention: 'Needs attention', verify: 'Needs attention', within: 'Good', unconfigured: 'Not assessed', missing: 'No reading', stale: 'Update reading' } as const)[state];
 }
 
-function astronautAssessmentText(assessment: ReadingAssessment) {
+function assessmentLabel(assessment: ReadingAssessment, dataset: Dataset) {
+  return conciseState(assessment.state, dataset);
+}
+
+function astronautAssessmentText(assessment: ReadingAssessment, _dataset: Dataset) {
   if (assessment.state === 'attention') return `${assessment.reason} ${assessment.nextAction}`;
   if (assessment.state === 'within' || assessment.state === 'unconfigured') return assessment.reason;
   return ({
@@ -54,9 +59,11 @@ function astronautAssessmentText(assessment: ReadingAssessment) {
   } as const)[assessment.state];
 }
 
-function astronautComparison(item: Observation, previous?: Observation) {
-  if (!previous) return 'No similar reading in the past 7 days.';
-  if (item.metric === 'mood') return `Your mood check-in changed from ${previous.value} to ${item.value}.`;
+function astronautComparison(item: Observation, previous?: Observation, days = 7) {
+  if (!previous) return `No earlier reading with matching method and conditions in the past ${days} days.`;
+  if (item.metric === 'mood') return previous.value === item.value
+    ? 'No change in your mood check-in.'
+    : `Your mood check-in changed from ${previous.value} to ${item.value}.`;
   const delta = Number(item.value) - Number(previous.value);
   if (item.metric === 'bp') {
     const bottom = Number(item.secondary) - Number(previous.secondary);
@@ -99,13 +106,34 @@ export function TodayView(props: Props) {
   const now = Date.now();
   const activeTimeZone = props.timeZone === 'UTC' ? 'UTC' : undefined;
   const [supportTab, setSupportTab] = useState<SupportTab>('pressure');
+  const [compactSupportTabs, setCompactSupportTabs] = useState(() => window.matchMedia('(max-width: 1100px)').matches);
   const [chartMode, setChartMode] = useState<'history' | 'live'>('history');
   const [playing, setPlaying] = useState(false);
   const [playbackFraction, setPlaybackFraction] = useState(1);
   const [updatedObservationId, setUpdatedObservationId] = useState('');
   const priorLatestRef = useRef('');
+  const supportTabOrder: SupportTab[] = ['pressure', 'sleep', 'activity'];
+  const onSupportTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: SupportTab) => {
+    const currentIndex = supportTabOrder.indexOf(current);
+    const nextIndex = event.key === 'ArrowRight' ? (currentIndex + 1) % supportTabOrder.length
+      : event.key === 'ArrowLeft' ? (currentIndex - 1 + supportTabOrder.length) % supportTabOrder.length
+        : event.key === 'Home' ? 0
+          : event.key === 'End' ? supportTabOrder.length - 1 : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    const next = supportTabOrder[nextIndex];
+    setSupportTab(next);
+    document.getElementById(`support-${next}-tab`)?.focus();
+  };
   const latestByMetric = useMemo(() => Object.fromEntries(props.metricOrder.map((metric) => [metric, latestForMetric(props.observations, metric)])) as Record<Metric, Observation | undefined>, [props.metricOrder, props.observations]);
   const latestSignature = props.metricOrder.map((metric) => latestByMetric[metric]?.id ?? '').join('|');
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1100px)');
+    const updateCompactSupportTabs = () => setCompactSupportTabs(media.matches);
+    media.addEventListener('change', updateCompactSupportTabs);
+    return () => media.removeEventListener('change', updateCompactSupportTabs);
+  }, []);
 
   useEffect(() => {
     const wearableAvailable = props.liveHeartRate.status === 'connected' || props.liveHeartRate.status === 'stale';
@@ -143,9 +171,9 @@ export function TodayView(props: Props) {
   const taskForPriority = topAssessment?.observation && openTasks.find((task) => task.observationId === topAssessment.observation?.id || task.resultId === topAssessment.observation?.id);
   const actionTask = topAssessment ? taskForPriority : topTask;
   const actionAssessment = topAssessment ?? (!actionTask ? missingAssessment : undefined);
+  const actionCopy = topAssessment?.nextAction ?? (actionTask ? actionTask.kind === 'measurement' ? 'A repeat measurement is scheduled.' : 'A routine check-in is scheduled.' : missingAssessment ? 'Record a reading to begin.' : 'No follow-up is due. Continue your scheduled check-ins.');
   const selectedAssessment = props.assessments[props.selectedMetric];
   const selectedItem = latestByMetric[props.selectedMetric];
-  const selectedComparison = selectedItem ? compareObservation(selectedItem, props.observations, 7) : undefined;
   const canShowLiveHeartRate = props.selectedMetric === 'heart' && (props.liveHeartRate.status === 'connected' || props.liveHeartRate.status === 'stale');
   const liveHeartRateStatus = props.liveHeartRate.status === 'stale' ? 'Signal paused'
     : currentHeartRate?.sensorContact === 'not-detected' ? 'Check sensor fit'
@@ -221,27 +249,34 @@ export function TodayView(props: Props) {
         : sensorFitIssue ? item ? `Recorded · ${localStamp(item.at, true, activeTimeZone)}` : 'Waiting for sensor contact'
           : item ? localStamp(item.at, true, activeTimeZone) : 'Awaiting entry';
       const value = live || pausedSample ? `${sample!.bpm} bpm` : item ? formatValue(item) : '—';
-      const stateLabel = live ? 'Live signal' : pausedSample ? 'Signal paused' : sensorFitIssue ? 'Check sensor fit' : item ? assessment.label : 'No measurement';
+      const stateLabel = live ? 'Live signal' : pausedSample ? 'Signal paused' : sensorFitIssue ? 'Check sensor fit' : item ? assessmentLabel(assessment, props.dataset) : 'No reading';
+      const goodState = stateLabel === 'Good';
       const stateClass = live ? 'state-live' : pausedSample ? 'state-sensor-stale' : sensorFitIssue ? 'state-verify' : `state-${assessment.state}`;
       const metricLabel = live ? 'Live pulse' : pausedSample ? 'Last pulse' : props.metrics[metric].short;
       const signalNote = 'Wearable sample, not a logged resting heart-rate observation.';
       return <button key={metric} type="button" className={`mission-metric ${selected ? 'selected' : ''} ${updatedObservationId === item?.id ? 'reading-updated' : ''}`}
-        aria-label={`${live ? 'Live pulse' : pausedSample ? 'Last wearable pulse' : props.metrics[metric].label}: ${live || pausedSample ? value : item ? formatValue(item) : 'No measurement'} · ${stateLabel}. ${live || pausedSample ? `${signalNote} ${pausedSample ? stamp : ''}` : stamp}. View graph.`}
+        aria-label={`${live ? 'Live pulse' : pausedSample ? 'Last wearable pulse' : props.metrics[metric].label}: ${live || pausedSample ? value : item ? formatValue(item) : 'No reading'} · ${stateLabel}. ${live || pausedSample ? `${signalNote} ${pausedSample ? stamp : ''}` : stamp}. View graph.`}
         aria-pressed={selected} onClick={() => selectMetric(metric)}>
         <span className="mission-metric-primary">
           <span className={`mission-metric-glyph metric-${metric}`}><MetricGlyph name={metric} size={21} /></span>
           <span className="mission-metric-label">{metricLabel}</span>
+          {goodState && <span className={`mission-metric-state ${stateClass}`}><i aria-hidden="true" />{stateLabel}</span>}
         </span>
-        <strong>{value}</strong>
+        <strong className={metric === 'bp' && item?.secondary != null ? 'mission-metric-bp-value' : undefined}>
+          {metric === 'bp' && item?.secondary != null
+            ? <><span>{item.value}/{item.secondary}</span><small className="mission-metric-unit">{item.unit}</small></>
+            : value}
+        </strong>
         <span className="mission-metric-details">
           <span className="mission-metric-stamp">{stamp}</span>
-          <span className={`mission-metric-state ${stateClass}`}><i aria-hidden="true" />{stateLabel}</span>
+          {!goodState && <span className={`mission-metric-state ${stateClass}`}><i aria-hidden="true" />{stateLabel}</span>}
         </span>
       </button>;
     })}
   </div>;
 
-  return <section className="today-page mission-console page-view" aria-label="Today health monitor">
+  return <section className="today-page mission-console page-view" aria-labelledby="today-title">
+    <h1 id="today-title" className="mission-sr-only">Today</h1>
     {metricStrip}
 
     <div className="mission-main-grid">
@@ -250,10 +285,10 @@ export function TodayView(props: Props) {
           <div className="mission-chart-title"><div><CardTitle>{chartMode === 'live' ? 'Live pulse' : props.metrics[props.selectedMetric].label}</CardTitle><span>{chartMode === 'live' ? 'Wearable · not a resting reading' : `Recorded observations · ${props.rangeDays} days`}</span></div>
             <div className="mission-chart-current"><strong>{chartMode === 'live'
               ? currentHeartRate ? `${currentHeartRate.bpm} bpm` : 'Waiting for signal'
-              : selectedItem ? formatValue(selectedItem) : 'No measurement'}</strong>
+              : selectedItem ? formatValue(selectedItem) : 'No reading'}</strong>
               {chartMode === 'live'
                 ? <span className={`mission-status live-status ${liveHeartRateStatus === 'Live signal' ? 'status-live' : liveHeartRateStatus === 'Check sensor fit' ? 'status-verify' : 'status-paused'}`}><i aria-hidden="true" />{liveHeartRateStatus}</span>
-                : selectedItem && <span className={`mission-status status-${selectedAssessment.state}`}><i aria-hidden="true" />{selectedAssessment.label}</span>}
+                : selectedItem && <span className={`mission-status status-${selectedAssessment.state}`}><i aria-hidden="true" />{assessmentLabel(selectedAssessment, props.dataset)}</span>}
             </div>
           </div>
           <div className="mission-chart-controls">
@@ -269,38 +304,43 @@ export function TodayView(props: Props) {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="mission-main-chart-content">
+        <CardContent className={`mission-main-chart-content ${chartMode === 'history' && latestForSelected && comparison ? 'has-chart-summary' : ''}`}>
+          {chartMode === 'history' && latestForSelected && comparison && <div className="mission-chart-summary" aria-live="polite">
+            <div className="mission-chart-summary-change">
+              <span>Change vs previous similar check</span>
+              <strong>{astronautComparison(latestForSelected, comparison.previous, comparison.days)}</strong>
+            </div>
+            <div className="mission-chart-summary-meta">
+              <span>{comparison.count} earlier comparable reading{comparison.count === 1 ? '' : 's'} · {comparison.days}-day lookback</span>
+              <span>Latest recorded · {localStamp(latestForSelected.at, true, activeTimeZone)}</span>
+            </div>
+          </div>}
           {chartMode === 'live'
             ? <LiveHeartRateChart samples={props.liveHeartRate.samples} status={props.liveHeartRate.status} timeZone={activeTimeZone} />
             : <ObservationChart observations={rangeObservations(props.selectedMetric)} metric={props.selectedMetric} timeZone={activeTimeZone}
               presentation="console-main" rangeDays={props.rangeDays} rangeEnd={now} replayAt={playbackAt}
               reducedMotion={props.reducedMotion} onSelect={props.onReview} />}
-          {chartMode === 'history' && comparison && <div className="mission-comparison" aria-live="polite">
-            <span>{comparison.count} similar reading{comparison.count === 1 ? '' : 's'} · past {comparison.days} days</span>
-            <strong>{comparison.comparison}</strong>
-          </div>}
         </CardContent>
       </Card>
 
       <aside className="mission-right-rail" aria-label="Reading assessment and next action">
         <Card className="mission-assessment-panel">
-          <CardHeader><div><CardTitle>Reading assessment</CardTitle><Badge className="mission-action-badge" variant={selectedAssessment.state === 'urgent' ? 'destructive' : ['within', 'missing', 'unconfigured'].includes(selectedAssessment.state) ? 'outline' : 'attention'}>{selectedAssessment.label}</Badge></div></CardHeader>
+          <CardHeader><div><CardTitle>Reading assessment</CardTitle><Badge className="mission-action-badge" variant={selectedAssessment.state === 'urgent' ? 'destructive' : selectedAssessment.state === 'within' ? 'secondary' : ['missing', 'unconfigured'].includes(selectedAssessment.state) ? 'outline' : 'attention'}>{assessmentLabel(selectedAssessment, props.dataset)}</Badge></div></CardHeader>
           <CardContent>
             {selectedItem && <strong className="mission-assessment-value">{formatValue(selectedItem)}</strong>}
-            <div className="mission-assessment-reason"><strong>{selectedAssessment.state === 'within' ? 'Status' : selectedAssessment.state === 'missing' ? 'Status' : 'What to do'}</strong><span>{astronautAssessmentText(selectedAssessment)}</span></div>
-            {selectedItem && <div className="mission-assessment-reason mission-assessment-comparison"><strong>Compared with your last similar check</strong><span>{astronautComparison(selectedItem, selectedComparison?.previous)}</span></div>}
+            <div className="mission-assessment-reason"><strong>{selectedAssessment.state === 'within' ? 'Status' : selectedAssessment.state === 'missing' ? 'Status' : 'What to do'}</strong><span>{astronautAssessmentText(selectedAssessment, props.dataset)}</span></div>
             <details className="mission-assessment-limits"><summary>Context and limits</summary><span>{props.metrics[props.selectedMetric].why} {props.metrics[props.selectedMetric].cannot}</span>{selectedAssessment.rule && <span>{selectedAssessment.rule.referenceLabel} Source: {selectedAssessment.rule.source} · v{selectedAssessment.rule.version}.</span>}</details>
             {!selectedItem && <Button size="sm" onClick={() => props.onAdd(props.selectedMetric)}>Record {props.metrics[props.selectedMetric].short.toLocaleLowerCase()}</Button>}
           </CardContent>
         </Card>
 
         <Card className={`mission-action-panel ${actionAssessment ? `priority-${actionAssessment.state}` : ''}`}>
-          <CardHeader><div><CardTitle>Next action</CardTitle>{actionAssessment && (actionAssessment.metric !== props.selectedMetric || actionAssessment.state !== selectedAssessment.state) && <Badge className="mission-action-badge" variant={actionAssessment.state === 'urgent' ? 'destructive' : actionAssessment.state === 'missing' ? 'outline' : 'attention'}>{conciseState(actionAssessment.state)}</Badge>}</div></CardHeader>
+          <CardHeader><div><CardTitle>Next action</CardTitle>{actionAssessment && (actionAssessment.metric !== props.selectedMetric || actionAssessment.state !== selectedAssessment.state) && <Badge className="mission-action-badge" variant={actionAssessment.state === 'urgent' ? 'destructive' : actionAssessment.state === 'missing' ? 'outline' : 'attention'}>{conciseState(actionAssessment.state, props.dataset)}</Badge>}</div></CardHeader>
           <CardContent>
             <strong className="mission-action-value">{topAssessment?.observation
               ? `${props.metrics[topAssessment.metric].short} · ${formatValue(topAssessment.observation)}`
-              : actionTask?.title ?? (missingAssessment ? missingAssessment.metric === 'heart' ? 'Log resting heart rate' : `Record ${props.metrics[missingAssessment.metric].short.toLocaleLowerCase()}` : 'No action scheduled')}</strong>
-            <p>{topAssessment?.nextAction ?? (actionTask ? actionTask.kind === 'measurement' ? 'A repeat measurement is scheduled.' : 'A routine check-in is scheduled.' : missingAssessment ? 'Record a reading to begin.' : 'There are no scheduled actions.')}</p>
+              : actionTask?.title ?? (missingAssessment ? missingAssessment.metric === 'heart' ? 'Log resting heart rate' : `Record ${props.metrics[missingAssessment.metric].short.toLocaleLowerCase()}` : 'No follow-up due')}</strong>
+            <p>{actionCopy}</p>
             {actionTask && <small className="mission-action-due"><CalendarClock aria-hidden="true" />{dueLabel(actionTask, now, activeTimeZone ?? '')}</small>}
             <ActionButton task={actionTask} assessment={actionAssessment} onTask={props.onTask}
               onAdd={(metric, taskId) => props.onAdd(metric, taskId)} onReview={(item) => props.onReview(item)} />
@@ -311,22 +351,22 @@ export function TodayView(props: Props) {
 
     <section className="mission-support" aria-label="Supporting records">
       <div className="mission-support-tabs" role="tablist" aria-label="Supporting panel">
-        <button type="button" role="tab" id="support-pressure-tab" aria-selected={supportTab === 'pressure'} aria-controls="support-pressure-panel" onClick={() => setSupportTab('pressure')}><MetricGlyph name="bp" size={19} /> Blood pressure</button>
-        <button type="button" role="tab" id="support-sleep-tab" aria-selected={supportTab === 'sleep'} aria-controls="support-sleep-panel" onClick={() => setSupportTab('sleep')}><MetricGlyph name="sleep" size={19} /> Sleep</button>
-        <button type="button" role="tab" id="support-activity-tab" aria-selected={supportTab === 'activity'} aria-controls="support-activity-panel" onClick={() => setSupportTab('activity')}><CalendarClock aria-hidden="true" /> Activity</button>
+        <button type="button" role="tab" id="support-pressure-tab" tabIndex={supportTab === 'pressure' ? 0 : -1} aria-selected={supportTab === 'pressure'} aria-controls="support-pressure-panel" onKeyDown={(event) => onSupportTabKeyDown(event, 'pressure')} onClick={() => setSupportTab('pressure')}><MetricGlyph name="bp" size={19} /> Blood pressure</button>
+        <button type="button" role="tab" id="support-sleep-tab" tabIndex={supportTab === 'sleep' ? 0 : -1} aria-selected={supportTab === 'sleep'} aria-controls="support-sleep-panel" onKeyDown={(event) => onSupportTabKeyDown(event, 'sleep')} onClick={() => setSupportTab('sleep')}><MetricGlyph name="sleep" size={19} /> Sleep</button>
+        <button type="button" role="tab" id="support-activity-tab" tabIndex={supportTab === 'activity' ? 0 : -1} aria-selected={supportTab === 'activity'} aria-controls="support-activity-panel" onKeyDown={(event) => onSupportTabKeyDown(event, 'activity')} onClick={() => setSupportTab('activity')}><CalendarClock aria-hidden="true" /> Activity</button>
       </div>
       <div className="mission-support-grid">
-        <Card className={`mission-support-panel support-pressure ${supportTab === 'pressure' ? 'support-active' : ''}`} id="support-pressure-panel" role="tabpanel" aria-labelledby="support-pressure-tab">
+        <Card className={`mission-support-panel support-pressure ${supportTab === 'pressure' ? 'support-active' : ''}`} id="support-pressure-panel" role="tabpanel" tabIndex={0} aria-labelledby="support-pressure-tab">
           <CardHeader><div><CardTitle>Blood pressure</CardTitle><span>Top and bottom numbers · mmHg</span></div><strong>{latestByMetric.bp ? formatValue(latestByMetric.bp) : '—'}</strong></CardHeader>
-          <CardContent><ObservationChart observations={rangeObservations('bp')} metric="bp" timeZone={activeTimeZone} presentation="console-compact"
-            rangeDays={props.rangeDays} rangeEnd={now} reducedMotion={props.reducedMotion} onSelect={props.onReview} /></CardContent>
+          <CardContent>{(!compactSupportTabs || supportTab === 'pressure') && <ObservationChart observations={rangeObservations('bp')} metric="bp" timeZone={activeTimeZone} presentation="console-compact"
+            rangeDays={props.rangeDays} rangeEnd={now} reducedMotion={props.reducedMotion} onSelect={props.onReview} />}</CardContent>
         </Card>
-        <Card className={`mission-support-panel support-sleep ${supportTab === 'sleep' ? 'support-active' : ''}`} id="support-sleep-panel" role="tabpanel" aria-labelledby="support-sleep-tab">
+        <Card className={`mission-support-panel support-sleep ${supportTab === 'sleep' ? 'support-active' : ''}`} id="support-sleep-panel" role="tabpanel" tabIndex={0} aria-labelledby="support-sleep-tab">
           <CardHeader><div><CardTitle>Sleep duration</CardTitle><span>Hours recorded</span></div><strong>{latestByMetric.sleep ? formatValue(latestByMetric.sleep) : '—'}</strong></CardHeader>
-          <CardContent><ObservationChart observations={rangeObservations('sleep')} metric="sleep" timeZone={activeTimeZone} presentation="bars"
-            rangeDays={props.rangeDays} rangeEnd={now} reducedMotion={props.reducedMotion} onSelect={props.onReview} /></CardContent>
+          <CardContent>{(!compactSupportTabs || supportTab === 'sleep') && <ObservationChart observations={rangeObservations('sleep')} metric="sleep" timeZone={activeTimeZone} presentation="bars"
+            rangeDays={props.rangeDays} rangeEnd={now} reducedMotion={props.reducedMotion} onSelect={props.onReview} />}</CardContent>
         </Card>
-        <Card className={`mission-support-panel support-activity ${supportTab === 'activity' ? 'support-active' : ''}`} id="support-activity-panel" role="tabpanel" aria-labelledby="support-activity-tab">
+        <Card className={`mission-support-panel support-activity ${supportTab === 'activity' ? 'support-active' : ''}`} id="support-activity-panel" role="tabpanel" tabIndex={0} aria-labelledby="support-activity-tab">
           <CardHeader><div><CardTitle>Recent activity</CardTitle><span>Recorded checks and follow-ups</span></div><Button variant="ghost" size="sm" onClick={props.onCare}>Care Plan<ArrowRight data-icon="inline-end" /></Button></CardHeader>
           <CardContent>
             {replayEvents.length ? <div className="mission-event-list">{[...replayEvents].reverse().slice(0, 3).map((event) => <button key={event.key} type="button" className="mission-event-row" onClick={() => { const fraction = (new Date(event.at).getTime() - rangeStart) / Math.max(1, now - rangeStart); setPlaying(false); setPlaybackFraction(Math.min(1, Math.max(0, fraction))); if ('metric' in event.item) props.onSelectMetric(event.item.metric); }}>

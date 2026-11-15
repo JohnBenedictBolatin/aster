@@ -1,16 +1,30 @@
-# Tether — Astronaut Health Console
+# Aster — Crew health, in context
 
-Tether is a Windows-first desktop concept for the 2026 NASA Space Apps Challenge. Its workflow helps a crew member notice a change, verify the observation, understand its context, and record a follow-up.
+Aster is an offline desktop demonstration for the 2026 NASA Space Apps Challenge. It helps an astronaut notice a health pattern, inspect the evidence, complete a guided review, record an action, and reassess. It uses fictional crew data and curated NASA and Canadian Space Agency research context; it is not a clinical tool and does not contact ground teams or claim agency endorsement.
 
-## Current review
+**Try the live browser demo:** [Open Aster](https://johnbenedictbolatin.github.io/tether/). It needs an internet connection to load, requires no account, and keeps browser entries on the device and browser where they were recorded. The [source code](https://github.com/JohnBenedictBolatin/tether) is also available on GitHub.
 
-The live, clickable design prototype is in [docs/design-review](docs/design-review/README.md). Open its `index.html` in a browser or use the local preview at `http://127.0.0.1:4173/` while that server is running.
+## Run the browser preview
 
-The current review screen uses a dark mission-monitor layout with six compact readings, trend charts, an interactive 3D reference anatomy view, and a persistent next action. Selecting a reading focuses the corresponding body area when one is available. The prototype is not the production Tauri app; local persistence and Windows packaging remain future work.
+```powershell
+cd docs/design-review
+npm ci
+npm run dev:web
+```
 
-## Project notes
+Open `http://127.0.0.1:4174/`. The browser preview persists local records in IndexedDB (with a localStorage fallback), requires no account or API key, and includes bundled scenarios, anatomy assets, curated NASA/CSA summaries, and a small offline NASA RadLab instrument-data excerpt with source query metadata. The five NASA/CSA challenge resources are catalogued in the [evidence register](docs/EVIDENCE-REGISTER.md). Optional heart-rate capture uses Web Bluetooth where supported.
 
-- [Product context](PRODUCT.md): platform, user needs, constraints, and visual direction.
-- [Engineering blueprint](docs/BLUEPRINT.md): challenge mapping, architecture, demo workflow, and validation.
-- [Research and evidence](docs/RESEARCH.md): primary sources, research context, and data opportunities.
-- [Earlier mobile concept](docs/UX-DESIGN.md): retained for history; the desktop prototype defines the current visual direction.
+## Windows desktop build
+
+Install the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/): Rust stable, Microsoft C++ Build Tools with “Desktop development with C++,” and Microsoft Edge WebView2. Then install the Tauri 2 CLI with `cargo install tauri-cli --version "^2" --locked`, and run `npm run desktop:dev` or `npm run desktop:build` from `docs/design-review/`. The desktop app stores data in SQLite in the per-user application data directory and builds an NSIS installer under `src-tauri/target/release/bundle/nsis/`; see the [Tauri Windows installer guide](https://v2.tauri.app/distribute/windows-installer/) for packaging options.
+
+The Windows NSIS installer has been generated successfully on this Windows environment with `cargo tauri build`. It is available at `docs/design-review/src-tauri/target/release/bundle/nsis/Aster_0.2.0_x64-setup.exe` (24.35 MiB). The build compiles the Tauri/SQLite vault and native BLE adapter; installation, app-data reopen, and physical wearable checks remain separate validation steps.
+
+## Project docs
+
+- [Product brief and feature matrix](PRODUCT.md)
+- [Implementation, validation, and delivery plan](docs/DELIVERY-PLAN.md)
+- [Evidence register](docs/EVIDENCE-REGISTER.md)
+- [Three-minute demo and alternate scenarios](docs/DEMO-SCRIPT.md)
+- [Research background](docs/RESEARCH.md)
+- [Browser app setup](docs/design-review/README.md)

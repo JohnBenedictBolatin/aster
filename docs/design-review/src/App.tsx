@@ -29,13 +29,6 @@ type ExportPayload = { dataset: Dataset; createdAt: string; mission: { environme
 
 const NAV: Array<[Page, string]> = [['console', 'Today'], ['measurements', 'Measurements'], ['care', 'Care Plan'], ['history', 'History']];
 const emptyWorkspace = (): WorkspaceData => ({ observations: [], contexts: [], tasks: [], episodes: [] });
-const BODY_SYSTEM_GUIDES: Array<{ name: string; text: string; metrics: Metric[]; source: string; url: string }> = [
-  { name: 'Heart and circulation', text: 'Heart rate and blood pressure do not assess overall heart health or explain a change.', metrics: ['heart', 'bp'], source: METRICS.heart.source, url: METRICS.heart.sourceUrl },
-  { name: 'Blood sugar', text: 'Readings can include meal timing. Tether does not set targets or treatment instructions.', metrics: ['glucose'], source: METRICS.glucose.source, url: METRICS.glucose.sourceUrl },
-  { name: 'Body temperature', text: 'Readings keep the site and device used. Temperature alone does not explain a change.', metrics: ['temperature'], source: METRICS.temperature.source, url: METRICS.temperature.sourceUrl },
-  { name: 'Sleep and mood', text: 'These are crew check-ins, not a mental-health assessment.', metrics: ['sleep', 'mood'], source: METRICS.sleep.source, url: METRICS.sleep.sourceUrl },
-  { name: 'Bone and muscle', text: 'Not assessed. The body model and exercise notes do not show bone or muscle health.', metrics: [], source: 'NASA Human System Risks · background only', url: 'https://www.nasa.gov/hhp/human-system-risks/' },
-];
 
 function routeFromHash(hash: string): Page {
   const route = hash.replace(/^#/, '').split(/[?&]/, 1)[0].toLowerCase();
@@ -104,6 +97,21 @@ function PageHeading({ title, description, actions }: { title: string; descripti
   return <header className="page-heading"><div><h1>{title}</h1><p className="subtitle">{description}</p></div>{actions && <div className="page-heading-actions">{actions}</div>}</header>;
 }
 
+function displayAssessmentLabel(state: ReadingAssessment['state'], _label: string, _dataset: Dataset) {
+  return ({ urgent: 'Bad', attention: 'Needs attention', verify: 'Needs attention', within: 'Good', unconfigured: 'Not assessed', missing: 'No reading', stale: 'Update reading' } as const)[state];
+}
+
+function assessmentBadgeVariant(state: ReadingAssessment['state']) {
+  if (state === 'urgent') return 'destructive' as const;
+  if (['attention', 'verify', 'stale'].includes(state)) return 'attention' as const;
+  if (state === 'within') return 'secondary' as const;
+  return 'outline' as const;
+}
+
+function displayAssessmentReason(assessment: ReadingAssessment, _dataset: Dataset) {
+  return assessment.reason;
+}
+
 function MissionClock({ missionDay, timeZone }: { missionDay: number; timeZone?: string }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -147,12 +155,11 @@ export default function App() {
   const [returnPage, setReturnPage] = useState<Page>('console');
   const [environment, setEnvironment] = useState('Spacecraft');
   const [missionStartDate, setMissionStartDate] = useState(() => new Date(Date.now() - 41 * 86400000).toISOString().slice(0, 10));
-  const [profileName, setProfileName] = useState('');
   const [reminders, setReminders] = useState(true);
   const [compactMotion, setCompactMotion] = useState(false);
   const [systemReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [timeZone, setTimeZone] = useState('Local device');
-  const [dataset, setDataset] = useState<Dataset>('demo');
+  const dataset: Dataset = 'demo';
   const [workspaces, setWorkspaces] = useState<Record<Dataset, WorkspaceData>>(() => ({ demo: makeDemoData(), personal: emptyWorkspace() }));
   const workspace = workspaces[dataset];
   const { observations, contexts, tasks, episodes } = workspace;
@@ -177,7 +184,7 @@ export default function App() {
   const entryOrigin = useRef<Page>('console');
   const [search, setSearch] = useState('');
   const [librarySearch, setLibrarySearch] = useState('');
-  const [librarySection, setLibrarySection] = useState<'guides' | 'hazards' | 'systems'>('guides');
+  const [librarySection, setLibrarySection] = useState<'guides' | 'hazards'>('guides');
   const [recordMetric, setRecordMetric] = useState('all');
   const [recordFrom, setRecordFrom] = useState('');
   const [recordTo, setRecordTo] = useState('');
@@ -242,7 +249,7 @@ export default function App() {
   const normalizedLibrarySearch = librarySearch.trim().toLocaleLowerCase();
   const libraryHazards = HAZARDS.filter((hazard) => `${hazard.name} ${hazard.text} ${hazard.limit}`.toLocaleLowerCase().includes(normalizedLibrarySearch));
   const libraryGuides = METRIC_ORDER.filter((metric) => `${METRICS[metric].label} ${METRICS[metric].why} ${METRICS[metric].how} ${METRICS[metric].cannot}`.toLocaleLowerCase().includes(normalizedLibrarySearch));
-  const libraryBodySystems = BODY_SYSTEM_GUIDES.filter((item) => `${item.name} ${item.text} ${item.metrics.map((metric) => METRICS[metric].label).join(' ')} ${item.source}`.toLocaleLowerCase().includes(normalizedLibrarySearch));
+  const librarySearchLabel = librarySection === 'guides' ? 'measurement guides' : 'spaceflight hazards';
   const openTasks = tasks.filter((task) => task.status === 'open').sort((a, b) => a.due.localeCompare(b.due));
   const selectedRecordEpisode = episodes.find((episode) => episode.id === recordEpisode);
   const selectedRecordEpisodeOriginal = selectedRecordEpisode ? observations.find((item) => item.id === selectedRecordEpisode.observationId) : undefined;
@@ -268,12 +275,18 @@ export default function App() {
     if (next === 'trends') setHistoryView('chart');
     if (next === 'records') setHistoryView('timeline');
     const destination = next === 'body' ? 'console' : next === 'trends' || next === 'records' ? 'history' : next;
+    document.getElementById('main-content')?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     setPage(destination);
     const hash = destination === 'console' ? '#today' : `#${destination}`;
     if (window.location.hash !== hash) window.history.pushState({ page: destination }, '', hash);
   };
+  const navigateLink = (event: React.MouseEvent<HTMLAnchorElement>, destination: Page) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(destination);
+  };
   const openReview = (item: Observation, from: Page = page) => {
-    reviewScrollTop.current = window.scrollY;
+    reviewScrollTop.current = document.getElementById('main-content')?.scrollTop ?? window.scrollY;
     setSelectedObservation(item.id);
     setSelectedMetric(item.metric);
     setReturnPage(from === 'review' ? returnPage : from);
@@ -281,10 +294,11 @@ export default function App() {
   };
   const returnFromReview = () => {
     navigate(returnPage);
-    window.requestAnimationFrame(() => window.scrollTo({ top: reviewScrollTop.current, behavior: compactMotion || systemReducedMotion ? 'instant' : 'smooth' }));
+    window.requestAnimationFrame(() => document.getElementById('main-content')?.scrollTo({ top: reviewScrollTop.current, behavior: compactMotion || systemReducedMotion ? 'instant' : 'smooth' }));
   };
   useEffect(() => {
     const updateRoute = () => {
+      document.getElementById('main-content')?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       setPage(routeFromHash(window.location.hash));
       const legacyHistoryView = historyViewFromHash(window.location.hash);
       if (legacyHistoryView) setHistoryView(legacyHistoryView);
@@ -540,13 +554,14 @@ export default function App() {
   const setRecordFilter = (setter: (value: string) => void, value: string) => { setter(value); setExportSelection([]); };
 
   return <div className={`app-shell tether-shell dark ${compactMotion || systemReducedMotion ? 'reduce-motion' : ''}`} data-page={page}>
+    <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
-      <a className="brand" href="#today" aria-label="Tether Crew Health home" onClick={(event) => { event.preventDefault(); navigate('console'); }}>
+      <a className="brand" href="#today" aria-label="Tether Crew Health home" onClick={(event) => navigateLink(event, 'console')}>
         <span className="brand-logo" aria-hidden="true"><span className="brand-wordmark">TETHER</span><span className="brand-tetherline"><span>CREW HEALTH</span><i /></span></span><img className="brand-compact-mark" src="/assets/brand/tether-mark.svg" alt="" />
       </a>
       <div className="side-caption">MISSION WORKSPACE</div>
-      <nav className="primary-nav" aria-label="Primary navigation">{NAV.map(([id, label]) => <Button key={id} type="button" variant={page === id ? 'secondary' : 'ghost'} className={`nav-item ${page === id ? 'active' : ''}`} title={label} aria-current={page === id ? 'page' : undefined} onClick={() => navigate(id)}><span className="nav-icon"><Icon name={id} /></span><span>{label}</span></Button>)}</nav>
-      <div className="utility-links"><div className="side-caption">REFERENCE & CONTROL</div>{(['library', 'settings'] as Page[]).map((id) => { const label = id === 'library' ? 'Reference library' : 'Settings'; return <Button key={id} type="button" variant={page === id ? 'secondary' : 'ghost'} className={`nav-item ${page === id ? 'active' : ''}`} title={label} aria-current={page === id ? 'page' : undefined} onClick={() => navigate(id)}><span className="nav-icon"><Icon name={id} /></span><span>{label}</span></Button>; })}</div>
+      <nav className="primary-nav" aria-label="Primary navigation">{NAV.map(([id, label]) => { const active = page === id || (id === 'history' && page === 'review'); return <a key={id} href={id === 'console' ? '#today' : `#${id}`} className={`nav-item ${active ? 'active' : ''}`} title={label} aria-current={active ? 'page' : undefined} onClick={(event) => navigateLink(event, id)}><span className="nav-icon"><Icon name={id} /></span><span>{label}</span></a>; })}</nav>
+      <nav className="utility-links" aria-label="Reference and control"><div className="side-caption">REFERENCE & CONTROL</div>{(['library', 'settings'] as Page[]).map((id) => { const label = id === 'library' ? 'Reference library' : 'Settings'; return <a key={id} href={`#${id}`} className={`nav-item ${page === id ? 'active' : ''}`} title={label} aria-current={page === id ? 'page' : undefined} onClick={(event) => navigateLink(event, id)}><span className="nav-icon"><Icon name={id} /></span><span>{label}</span></a>; })}</nav>
     </aside>
 
     <div className="main-area">
@@ -555,8 +570,8 @@ export default function App() {
         <Button type="button" variant="outline" className="support-button" aria-label="Medical support" onClick={() => navigate('medical')}><Icon name="medical" /> Medical support</Button>
       </div></header>
 
-      <main className="content-wrap">
-        {page === 'console' && <TodayView metrics={METRICS} metricOrder={METRIC_ORDER} observations={observations} contexts={contexts} tasks={tasks} assessments={assessments}
+      <main className="content-wrap" id="main-content" tabIndex={-1}>
+        {page === 'console' && <TodayView dataset={dataset} metrics={METRICS} metricOrder={METRIC_ORDER} observations={observations} contexts={contexts} tasks={tasks} assessments={assessments}
           liveHeartRate={heartRateMonitor}
           selectedMetric={selectedMetric} selectedStructure={selectedStructure}
           environment={environment} missionDay={missionDay} timeZone={activeTimeZone ?? ''} reducedMotion={compactMotion || systemReducedMotion}
@@ -567,24 +582,18 @@ export default function App() {
 
         {page === 'measurements' && <section className="page-view measurements-page">
           <PageHeading title="Measurements" description="Record a health reading or check-in." />
-          <div className="measurement-grid">{METRIC_ORDER.map((metric) => {
+          <ul className="measurement-list" aria-label="Crew health measurements">{METRIC_ORDER.map((metric) => {
             const item = latestForMetric(observations, metric);
             const assessment = assessments[metric];
-            const statusLabel = assessment.state === 'attention' || assessment.state === 'urgent' ? 'Review'
-              : assessment.state === 'verify' ? 'Check conditions'
-              : assessment.state === 'stale' ? 'Out of date'
-              : assessment.state === 'missing' ? 'No measurement'
-              : assessment.state === 'within' ? 'Within check'
-              : 'Recorded';
-            const statusVariant = ['attention', 'urgent', 'verify', 'stale'].includes(assessment.state) ? 'attention'
-              : assessment.state === 'within' ? 'secondary' : 'outline';
-            return <Card className="measurement-option" key={metric}>
-              <CardHeader className="measurement-option-header"><div className="measurement-card-title"><MetricGlyph name={metric} /><div><CardDescription>{METRICS[metric].unit || 'Self report'}</CardDescription><CardTitle>{METRICS[metric].label}</CardTitle></div></div><Badge variant={statusVariant}>{statusLabel}</Badge></CardHeader>
-              <CardContent className="measurement-option-content"><div className="measurement-latest"><span>Latest reading</span><strong>{item ? formatValue(item) : 'No measurement'}</strong><small>{item ? `${fullDate(item.at, activeTimeZone)} · ${item.method}` : 'Record your first reading.'}</small></div>
-                <Button size="sm" aria-label={`Record ${METRICS[metric].label.toLocaleLowerCase()}`} onClick={() => startMeasurement(metric)}><Plus data-icon="inline-start" /> Record</Button>
-              </CardContent>
-            </Card>;
-          })}</div>
+            const statusLabel = displayAssessmentLabel(assessment.state, assessment.label, dataset);
+            const statusVariant = assessmentBadgeVariant(assessment.state);
+            return <li className="measurement-row" key={metric}>
+              <div className="measurement-row-indicator"><MetricGlyph name={metric} /><span><strong>{METRICS[metric].label}</strong><small>{METRICS[metric].unit || 'Self report'}</small></span></div>
+              <div className="measurement-row-latest"><span>Latest reading</span><strong className="numeric-value">{item ? formatValue(item) : 'No reading'}</strong><small>{item ? `${fullDate(item.at, activeTimeZone)} · ${item.method}` : 'Record your first reading.'}</small></div>
+              <Badge variant={statusVariant}>{statusLabel}</Badge>
+              <Button size="sm" aria-label={`Record ${METRICS[metric].label.toLocaleLowerCase()}`} onClick={() => startMeasurement(metric)}><Plus data-icon="inline-start" /> Record</Button>
+            </li>;
+          })}</ul>
           <div className="context-capture-section">
             <div className="section-heading"><div><h2>Optional check-ins</h2></div></div>
             <div className="context-action-row">{CONTEXT_KINDS.map((kind) => <Button key={kind} variant="outline" onClick={() => startContext(kind)}>{kind === 'sleep quality' ? <SunMedium data-icon="inline-start" /> : <Plus data-icon="inline-start" />}{kind[0].toUpperCase() + kind.slice(1)}</Button>)}</div>
@@ -606,7 +615,7 @@ export default function App() {
             </CardContent></Card>
           <div className="section-heading"><div><h2>Readings</h2><p>Method and conditions stay with every reading.</p></div><Badge variant="secondary">{trendRows.length}</Badge></div>
           <div className="trend-observation-table"><Table><TableHeader><TableRow><TableHead>Date and time</TableHead><TableHead>Reading</TableHead><TableHead>Method and conditions</TableHead><TableHead>Check</TableHead><TableHead /></TableRow></TableHeader><TableBody>
-            {[...trendRows].reverse().map((item) => { const result = assessObservation(item, dataset, now); return <TableRow key={item.id}><TableCell>{fullDate(item.at, activeTimeZone)} · {new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZone: activeTimeZone }).format(new Date(item.at))}</TableCell><TableCell><div className="table-reading"><MetricGlyph name={item.metric} /><strong>{formatValue(item)}</strong></div></TableCell><TableCell>{item.method} · {item.context}</TableCell><TableCell><Badge variant={result.state === 'within' ? 'secondary' : result.state === 'urgent' || result.state === 'attention' || result.state === 'verify' ? 'attention' : 'outline'}>{result.label}</Badge></TableCell><TableCell><Button size="sm" variant="ghost" onClick={() => openReview(item, 'history')}>Open<ArrowRight data-icon="inline-end" /></Button></TableCell></TableRow>; })}
+            {[...trendRows].reverse().map((item) => { const result = assessObservation(item, dataset, now); return <TableRow key={item.id}><TableCell data-label="Date and time">{fullDate(item.at, activeTimeZone)} · {new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZone: activeTimeZone }).format(new Date(item.at))}</TableCell><TableCell data-label="Reading"><div className="table-reading"><MetricGlyph name={item.metric} /><strong>{formatValue(item)}</strong></div></TableCell><TableCell data-label="Method and conditions">{item.method} · {item.context}</TableCell><TableCell data-label="Check"><Badge variant={assessmentBadgeVariant(result.state)}>{displayAssessmentLabel(result.state, result.label, dataset)}</Badge></TableCell><TableCell data-label="Details"><Button size="sm" variant="ghost" onClick={() => openReview(item, 'history')}>Open<ArrowRight data-icon="inline-end" /></Button></TableCell></TableRow>; })}
             {!trendRows.length && <TableRow><TableCell colSpan={5}>No readings in this period.</TableCell></TableRow>}
           </TableBody></Table></div>
           <div className="section-heading context-events-heading"><div><h2>Related check-ins</h2></div></div>
@@ -620,10 +629,10 @@ export default function App() {
             <div><h1>Reading review</h1><p className="subtitle">What it means. What to do next.</p></div>
           </div>
           {selected ? <div className="review-layout">
-            <Card className="review-evidence-card"><CardHeader><div className="review-selected-label"><MetricGlyph name={selected.metric} /><div><CardDescription>Selected reading</CardDescription><CardTitle>{METRICS[selected.metric].label}</CardTitle></div></div>{selectedReadingAssessment && <Badge variant={selectedReadingAssessment.state === 'within' ? 'secondary' : ['urgent', 'attention', 'verify'].includes(selectedReadingAssessment.state) ? 'attention' : 'outline'}>{selectedReadingAssessment.label}</Badge>}</CardHeader>
+            <Card className="review-evidence-card"><CardHeader><div className="review-selected-label"><MetricGlyph name={selected.metric} /><div><CardDescription>Reading</CardDescription><CardTitle>{METRICS[selected.metric].label}</CardTitle></div></div>{selectedReadingAssessment && <Badge variant={assessmentBadgeVariant(selectedReadingAssessment.state)}>{displayAssessmentLabel(selectedReadingAssessment.state, selectedReadingAssessment.label, dataset)}</Badge>}</CardHeader>
               <CardContent>
                 <div className="review-value-row"><strong>{formatValue(selected)}</strong><span>{fullDate(selected.at, activeTimeZone)} · {new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZone: activeTimeZone }).format(new Date(selected.at))}</span></div>
-                {selectedReadingAssessment && <p className={`review-assessment-reason assessment-${selectedReadingAssessment.state}`}>{selectedReadingAssessment.reason}</p>}
+                {selectedReadingAssessment && <p className={`review-assessment-reason assessment-${selectedReadingAssessment.state}`}>{displayAssessmentReason(selectedReadingAssessment, dataset)}</p>}
                 <p className="review-meaning">{METRICS[selected.metric].meaning}</p>
                 <div className="review-fact-grid"><div><span>How you measured</span><b>{selected.method}</b></div><div><span>Conditions</span><b>{selected.context}</b></div>{!selected.synthetic && <div><span>Source</span><b>{selected.source}</b></div>}</div>
                 {selected.quality === 'verify' && <Alert className="review-quality-alert"><Info aria-hidden="true" /><AlertTitle>Check how this was measured</AlertTitle><AlertDescription>{selected.note || 'The method or conditions are missing. This affects comparisons.'}</AlertDescription></Alert>}
@@ -636,13 +645,13 @@ export default function App() {
                     {rangeComparison.previous && <Button variant="ghost" size="sm" onClick={() => openReview(rangeComparison.previous!, 'review')}>Open earlier reading<ArrowRight data-icon="inline-end" /></Button>}</>}
                 </section>
                 <ObservationChart observations={observations.filter((item) => item.metric === selected.metric && new Date(item.at).getTime() >= new Date(selected.at).getTime() - 7 * 86400000 && new Date(item.at).getTime() <= new Date(selected.at).getTime() + 7 * 86400000).sort((a, b) => a.at.localeCompare(b.at))} metric={selected.metric} timeZone={activeTimeZone} onSelect={(item) => openReview(item, 'review')} />
-                <details className="review-source-details"><summary>More about this reading</summary><p><b>Why:</b> {METRICS[selected.metric].why}</p><p><b>How to measure:</b> {METRICS[selected.metric].how}</p><p><b>What it cannot tell you:</b> {METRICS[selected.metric].cannot}</p>{selectedReadingAssessment?.rule && <p><b>Configured check:</b> {selectedReadingAssessment.rule.source} · version {selectedReadingAssessment.rule.version}. {selectedReadingAssessment.rule.reviewStatus === 'practice-only' ? 'Illustrative; not an approved astronaut limit.' : 'Reviewed.'}</p>}<p><b>Source:</b> <a href={METRICS[selected.metric].sourceUrl} target="_blank" rel="noreferrer">{METRICS[selected.metric].source}</a></p><small>{selected.guidanceVersion} · {GUIDANCE_REVIEW_STATUS}</small></details>
+                <details className="review-source-details"><summary>More about this reading</summary><p><b>Why:</b> {METRICS[selected.metric].why}</p><p><b>How to measure:</b> {METRICS[selected.metric].how}</p><p><b>What it cannot tell you:</b> {METRICS[selected.metric].cannot}</p>{selectedReadingAssessment?.rule && <p><b>Configured check:</b> {selectedReadingAssessment.rule.source} · version {selectedReadingAssessment.rule.version}.</p>}<p><b>Source:</b> <a href={METRICS[selected.metric].sourceUrl} target="_blank" rel="noreferrer">{METRICS[selected.metric].source}</a></p><small>{selected.guidanceVersion}</small></details>
               </CardContent>
             </Card>
             <aside className="review-action-column">
               <Card><CardHeader><CardDescription>Next action</CardDescription><CardTitle>{reviewTask?.status === 'complete' ? 'Follow-up complete' : reviewTask?.status === 'open' && reviewTask.resultId ? 'Review repeat reading' : selectedReadingAssessment?.state === 'attention' || selectedReadingAssessment?.state === 'urgent' ? 'Repeat this reading' : selectedReadingAssessment?.state === 'verify' ? 'Check the conditions' : 'Plan the next check'}</CardTitle></CardHeader>
                 <CardContent className="review-action-content">
-                  <p>{reviewTask?.status === 'complete' ? 'The follow-up was reviewed. That does not confirm a health concern has resolved.' : selectedReadingAssessment?.state === 'verify' ? 'Follow the device instructions. Record the method and conditions you used.' : selectedReadingAssessment?.rule?.reviewStatus === 'practice-only' ? 'This configured rule is illustrative only; repeat and review the reading under the recorded conditions.' : METRICS[selected.metric].how}</p>
+                  <p>{reviewTask?.status === 'complete' ? 'The follow-up was reviewed. That does not confirm a health concern has resolved.' : selectedReadingAssessment?.state === 'verify' ? 'Follow the device instructions. Record the method and conditions you used.' : METRICS[selected.metric].how}</p>
                   {reviewTask?.status === 'open' && !reviewTask.resultId && <Button onClick={() => startMeasurement(selected.metric, reviewTask.id)}><RotateCcw data-icon="inline-start" /> Record repeat</Button>}
                   {reviewTask?.status === 'open' && reviewTask.resultId && <Button onClick={() => openPageCareTask(reviewTask)}>Review and complete follow-up<ArrowRight data-icon="inline-end" /></Button>}
                   {(!reviewTask || reviewTask.status === 'cancelled') && (selectedReadingAssessment && ['attention', 'urgent', 'verify', 'stale'].includes(selectedReadingAssessment.state)
@@ -681,8 +690,8 @@ export default function App() {
             const taskDue = new Date(task.due).getTime();
             return <article id={`care-task-${task.id}`} className="care-task-row" key={task.id}>
               <div className="care-task-main"><span className="task-kind-mark">{task.kind === 'measurement' ? <MetricGlyph name={original?.metric ?? selectedMetric} /> : <Activity aria-hidden="true" />}</span><div><div className="care-task-title-line"><h3>{task.title}</h3><Badge variant={taskDue < now ? 'attention' : 'secondary'}>{taskDue < now ? 'Overdue' : 'Upcoming'}</Badge></div><p>{formatDateTime(task.due, activeTimeZone)} · {task.kind === 'measurement' ? 'Repeat reading' : 'Routine task'}</p>
-                {original && <p>Original · {METRICS[original.metric].short} · {formatValue(original)} · {fullDate(original.at, activeTimeZone)} · {original.context} · {originalAssessment?.label}</p>}
-                {result && <div className="task-result-pair"><div><span>Original</span><b>{original ? formatValue(original) : 'Not recorded'}</b></div><div><span>Repeat</span><b>{formatValue(result)}</b></div>{resultAssessment && <Badge variant={resultAssessment.state === 'within' ? 'secondary' : ['attention', 'urgent', 'verify'].includes(resultAssessment.state) ? 'attention' : 'outline'}>{resultAssessment.label}</Badge>}<Badge variant={comparable ? 'secondary' : 'attention'}>{comparable ? 'Conditions match' : 'Method or conditions differ'}</Badge><Button variant="ghost" size="sm" onClick={() => openReview(result, 'care')}>Review readings<ArrowRight data-icon="inline-end" /></Button></div>}
+                {original && <p>Original · {METRICS[original.metric].short} · {formatValue(original)} · {fullDate(original.at, activeTimeZone)} · {original.context} · {originalAssessment && <Badge variant={assessmentBadgeVariant(originalAssessment.state)}>{displayAssessmentLabel(originalAssessment.state, originalAssessment.label, dataset)}</Badge>}</p>}
+                {result && <div className="task-result-pair"><div><span>Original</span><b>{original ? formatValue(original) : 'Not recorded'}</b></div><div><span>Repeat</span><b>{formatValue(result)}</b></div>{resultAssessment && <Badge variant={assessmentBadgeVariant(resultAssessment.state)}>{displayAssessmentLabel(resultAssessment.state, resultAssessment.label, dataset)}</Badge>}<Badge variant={comparable ? 'secondary' : 'attention'}>{comparable ? 'Conditions match' : 'Method or conditions differ'}</Badge><Button variant="ghost" size="sm" onClick={() => openReview(result, 'care')}>Review readings<ArrowRight data-icon="inline-end" /></Button></div>}
               </div></div>
               <div className="care-task-actions">
                 {task.kind === 'measurement' && <Button onClick={() => result ? openReview(result, 'care') : startMeasurement(original?.metric ?? selectedMetric, task.id)}>{result ? 'Review repeat' : 'Record follow-up'}<ArrowRight data-icon="inline-end" /></Button>}
@@ -712,7 +721,7 @@ export default function App() {
           {visibleEvents.length ? <div className="record-timeline">{visibleEvents.map((event) => { const readingAssessment = event.kind === 'observation' ? assessObservation(event.item as Observation, dataset, now) : undefined; return <article className="record-event" key={event.key}>
             <input aria-label={`Include ${event.title} in export`} type="checkbox" checked={selectedEventKeys.includes(event.key)} onChange={(change) => setExportSelection((current) => { const selectedKeys = new Set(current ?? []); if (change.target.checked) selectedKeys.add(event.key); else selectedKeys.delete(event.key); return [...selectedKeys]; })} />
             <span className="record-event-marker" aria-hidden="true">{event.kind === 'observation' ? <MetricGlyph name={(event.item as Observation).metric} /> : event.kind === 'context' ? <SunMedium /> : <CalendarClock />}</span>
-            <div><h2>{event.title}</h2><p>{event.detail}</p>{readingAssessment && ['urgent', 'attention', 'verify', 'stale'].includes(readingAssessment.state) && <Badge variant={readingAssessment.state === 'urgent' ? 'destructive' : 'attention'}>{readingAssessment.label}</Badge>}</div>
+            <div><h2>{event.title}</h2><p>{event.detail}</p>{readingAssessment && ['urgent', 'attention', 'verify', 'stale'].includes(readingAssessment.state) && <Badge variant={readingAssessment.state === 'urgent' ? 'destructive' : 'attention'}>{displayAssessmentLabel(readingAssessment.state, readingAssessment.label, dataset)}</Badge>}</div>
             <time>{fullDate(event.at, activeTimeZone)} · {new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZone: activeTimeZone }).format(new Date(event.at))}</time>
             {event.kind === 'observation' && <Button variant="ghost" size="sm" onClick={() => openReview(event.item as Observation, 'history')}>Review<ArrowRight data-icon="inline-end" /></Button>}
           </article>; })}</div> : <Empty><EmptyHeader><EmptyTitle>No matching records</EmptyTitle><EmptyDescription>Change the filters or add a measurement.</EmptyDescription></EmptyHeader></Empty>}
@@ -720,10 +729,10 @@ export default function App() {
         </section>}
 
         {page === 'library' && <section className="page-view library-page">
-          <PageHeading title="Reference Library" description="Quick guides for readings, mission hazards, and body systems." />
-          <div className="library-search-wrap"><Search aria-hidden="true" /><Input aria-label={`Search ${librarySection === 'guides' ? 'measurement guides' : librarySection === 'hazards' ? 'spaceflight hazards' : 'body systems'}`} value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder={`Search ${librarySection === 'guides' ? 'measurement guides' : librarySection === 'hazards' ? 'spaceflight hazards' : 'body systems'}…`} /></div>
+          <PageHeading title="Reference Library" description="Quick guides for readings and mission hazards." />
+          <div className="library-search-wrap"><Search aria-hidden="true" /><Input aria-label={`Search ${librarySearchLabel}`} value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder={`Search ${librarySearchLabel}…`} /></div>
           <Tabs className="library-tabs" value={librarySection} onValueChange={(value) => { if (value) { setLibrarySection(value as typeof librarySection); setLibrarySearch(''); } }}>
-            <TabsList aria-label="Reference topics"><TabsTrigger value="guides">Measurement guides</TabsTrigger><TabsTrigger value="hazards">Spaceflight hazards</TabsTrigger><TabsTrigger value="systems">Body systems</TabsTrigger></TabsList>
+            <TabsList aria-label="Reference topics"><TabsTrigger value="guides">Measurement guides</TabsTrigger><TabsTrigger value="hazards">Spaceflight hazards</TabsTrigger></TabsList>
             <TabsContent value="guides"><section className="library-section"><div className="library-section-heading"><div><h2>Measurement guides</h2><p>Why to measure, how to record, and what a reading cannot show. Procedures have not been reviewed.</p></div><Badge variant="outline">{libraryGuides.length}</Badge></div>
               <div className="guide-list">{libraryGuides.map((metric) => <details className="guide-entry" key={metric}><summary><MetricGlyph name={metric} /><span>{METRICS[metric].label}</span><Badge variant="outline">{METRICS[metric].unit || 'Self report'}</Badge></summary><div className="guide-entry-content"><p><b>Why:</b> {METRICS[metric].why}</p><p><b>How:</b> {METRICS[metric].how}</p><p><b>Limits:</b> {METRICS[metric].cannot}</p><a href={METRICS[metric].sourceUrl} target="_blank" rel="noreferrer">{METRICS[metric].source} <ArrowRight aria-hidden="true" /></a><small>{GUIDANCE_VERSION} · {GUIDANCE_REVIEW_STATUS}</small></div></details>)}</div>
               {!libraryGuides.length && <p className="library-empty">No guides match “{librarySearch}”. <Button variant="ghost" size="sm" onClick={() => setLibrarySearch('')}>Clear search</Button></p>}
@@ -733,11 +742,6 @@ export default function App() {
               {!libraryHazards.length && <p className="library-empty">No hazards match “{librarySearch}”. <Button variant="ghost" size="sm" onClick={() => setLibrarySearch('')}>Clear search</Button></p>}
               <a className="library-source-link" href="https://www.nasa.gov/hrp/hazards/" target="_blank" rel="noreferrer">NASA Human Research Program · Five hazards <ArrowRight aria-hidden="true" /></a>
             </section></TabsContent>
-            <TabsContent value="systems"><section className="library-section"><div className="library-section-heading"><div><h2>Body systems</h2><p>Reference anatomy shows location, not health.</p></div><Badge variant="outline">{libraryBodySystems.length}</Badge></div>
-              <div className="body-system-list">{libraryBodySystems.map((item) => <article key={item.name}><strong>{item.name}</strong><span>{item.text}</span><small>Related readings: {item.metrics.length ? item.metrics.map((metric) => METRICS[metric].short).join(' · ') : 'Not assessed'}</small></article>)}</div>
-              {!libraryBodySystems.length && <p className="library-empty">No body systems match “{librarySearch}”. <Button variant="ghost" size="sm" onClick={() => setLibrarySearch('')}>Clear search</Button></p>}
-              <a className="library-source-link" href="https://www.nasa.gov/hhp/human-system-risks/" target="_blank" rel="noreferrer">NASA Human System Risks · background only <ArrowRight aria-hidden="true" /></a><small className="library-review-note">{GUIDANCE_VERSION} · {GUIDANCE_REVIEW_STATUS}</small>
-            </section></TabsContent>
           </Tabs>
         </section>}
 
@@ -746,7 +750,6 @@ export default function App() {
           <div className="settings-list">
             <section className="settings-group"><h2>Mission context</h2>
               <FieldGroup>
-                {dataset === 'personal' && <Field><FieldLabel htmlFor="profile-name">Crew name (optional)</FieldLabel><Input id="profile-name" value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></Field>}
                 <Field><FieldLabel htmlFor="mission-environment">Mission environment</FieldLabel><Select value={environment} onValueChange={(value) => value && setEnvironment(value)}><SelectTrigger id="mission-environment"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{['Spacecraft', 'Space station', 'Lunar rover', 'Surface base'].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select><small>Included in reports. No environment sensor is connected.</small></Field>
                 <Field><FieldLabel htmlFor="mission-start">Mission start date</FieldLabel><Input id="mission-start" type="date" value={missionStartDate} onChange={(event) => setMissionStartDate(event.target.value)} /><small>Sets the mission day shown on Today.</small></Field>
                 <Field><FieldLabel htmlFor="mission-time-zone">Displayed time zone</FieldLabel><Select value={timeZone} onValueChange={(value) => value && setTimeZone(value)}><SelectTrigger id="mission-time-zone"><SelectValue>{timeZone === 'UTC' ? 'UTC' : `Device time · ${Intl.DateTimeFormat().resolvedOptions().timeZone}`}</SelectValue></SelectTrigger><SelectContent><SelectGroup><SelectItem value="Local device">Device time · {Intl.DateTimeFormat().resolvedOptions().timeZone}</SelectItem><SelectItem value="UTC">UTC</SelectItem></SelectGroup></SelectContent></Select><small>Used for displayed and new reading times.</small></Field>
@@ -756,9 +759,6 @@ export default function App() {
               <label className="settings-toggle-row" htmlFor="reminder-prompts"><span><b>Reminders on Today</b><small>Show an in-app reminder when a follow-up is due. Tether must be open.</small></span><Switch id="reminder-prompts" checked={reminders} onCheckedChange={setReminders} aria-label="Reminder prompts on Today" /></label>
               <label className="settings-toggle-row" htmlFor="reduce-motion"><span><b>Reduce motion</b><small>Limit page and camera transitions.</small></span><Switch id="reduce-motion" checked={compactMotion} onCheckedChange={setCompactMotion} aria-label="Reduce motion" /></label>
               <div className="settings-readonly"><b>Units</b><span>bpm · mmHg · mg/dL · °C · hours. Unit conversion is unavailable.</span></div>
-            </section>
-            <section className="settings-group"><h2>Data mode</h2>
-              <Field><FieldLabel htmlFor="active-dataset">Readings</FieldLabel><Select value={dataset} onValueChange={(value) => { if (value) { setDataset(value as Dataset); setSelectedObservation(''); } }}><SelectTrigger id="active-dataset"><SelectValue>{dataset === 'demo' ? 'Current mission' : 'My readings'}</SelectValue></SelectTrigger><SelectContent><SelectGroup><SelectItem value="demo">Current mission</SelectItem><SelectItem value="personal">My readings</SelectItem></SelectGroup></SelectContent></Select><small>Entries are kept until Tether closes.</small>{dataset === 'demo' && <small>Simulation profile: fit 40-year-old male. Targets are illustrative.</small>}</Field>
             </section>
           </div>
         </section>}

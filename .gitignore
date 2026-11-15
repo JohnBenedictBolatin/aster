@@ -1,0 +1,9 @@
+/.playwright-cli/
+/output/
+**/node_modules/
+**/dist/
+**/target/
+.env
+.env.*
+!.env.example
+*.log

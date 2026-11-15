@@ -27,7 +27,7 @@ type TurnRef = { current: THREE.Group | null };
 function installBodyContour(material: THREE.MeshStandardMaterial) {
   if (material.userData.tetherBodyContour) return;
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.tetherContourColor = { value: new THREE.Color('#9adab8') };
+    shader.uniforms.tetherContourColor = { value: new THREE.Color('#cfcfcf') };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTetherViewNormal;')
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvTetherViewNormal = normalize(normalMatrix * objectNormal);');
@@ -152,7 +152,7 @@ function Anatomy({ visibleLayers, selected, onSelect, onFocus, onFrame, frameTar
   visibleLayers: Set<string>; selected: string; onSelect: (id: string, metricKeys: string[]) => void;
   onFocus: (frame: FrameTarget) => void; onFrame: (center: THREE.Vector3, size: THREE.Vector3) => void; frameTarget: FrameTarget; surfaceAlpha: number; isolated: boolean; focusKey: number; highlightState?: AssessmentState; priorityStructure?: string; priorityState?: AssessmentState; assetAttempt: number; compact: boolean; reducedMotion: boolean; autoTurn: TurnRef;
 }) {
-  const assetUrl = (path: string) => `${path}?rev=${ANATOMY_ASSET_REVISION}&attempt=${assetAttempt}`;
+  const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}?rev=${ANATOMY_ASSET_REVISION}&attempt=${assetAttempt}`;
   const [bodyAsset] = useLoader(GLTFLoader, [assetUrl('/assets/anatomy/reference-body.glb')]);
   const invalidate = useThree((state) => state.invalidate);
   const body = useMemo(() => bodyAsset.scene.clone(true), [bodyAsset]);
@@ -215,9 +215,9 @@ function Anatomy({ visibleLayers, selected, onSelect, onFocus, onFrame, frameTar
       const materials = node.userData.tetherMaterials as THREE.Material[] | undefined;
       materials?.forEach((material) => {
         if (material instanceof THREE.MeshStandardMaterial) {
-          const baseColor = skin ? '#a7b5aa' : layer === 'skeleton' ? '#aaa79b' : layer === 'muscular' ? '#987a76' : layer === 'cardiovascular' ? '#ad7771' : layer === 'respiratory' ? '#78947f' : '#9b907c';
-          const selectedColor = highlightState === 'urgent' ? '#d97772' : ['attention', 'verify', 'stale'].includes(highlightState ?? '') ? '#e0a452' : '#78c6a4';
-          const priorityColor = priorityState === 'urgent' ? '#d97772' : '#e0a452';
+          const baseColor = skin ? '#aaa' : layer === 'skeleton' ? '#858585' : layer === 'muscular' ? '#777' : layer === 'cardiovascular' ? '#8a8a8a' : layer === 'respiratory' ? '#999' : '#727272';
+          const selectedColor = highlightState === 'urgent' ? '#ef7474' : ['attention', 'verify', 'stale'].includes(highlightState ?? '') ? '#f0b15b' : '#e8e8e8';
+          const priorityColor = priorityState === 'urgent' ? '#ef7474' : '#f0b15b';
           const numericPriority = isPriorityTarget && (priorityState === 'urgent' || priorityState === 'attention');
           const fillHighlight = node.userData.tetherStructure !== 'skin' && (numericPriority || isSelected);
           const fillColor = numericPriority ? priorityColor : selectedColor;
@@ -247,8 +247,8 @@ function Anatomy({ visibleLayers, selected, onSelect, onFocus, onFrame, frameTar
       if (!isSelected && !isPriorityTarget) return;
       const priorityHasCue = isPriorityTarget && ['urgent', 'attention', 'verify'].includes(priorityState ?? '');
       const color = priorityHasCue
-        ? priorityState === 'urgent' ? '#d97772' : '#e0a452'
-        : isSelected ? highlightState === 'urgent' ? '#d97772' : ['attention', 'verify', 'stale'].includes(highlightState ?? '') ? '#e0a452' : '#78c6a4' : '#9adab8';
+        ? priorityState === 'urgent' ? '#ef7474' : '#f0b15b'
+        : isSelected ? highlightState === 'urgent' ? '#ef7474' : ['attention', 'verify', 'stale'].includes(highlightState ?? '') ? '#f0b15b' : '#eee' : '#777';
       const material = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide, transparent: true, opacity: skinTarget ? priorityHasCue ? 0.4 : 0.3 : priorityState === 'verify' && isPriorityTarget ? 0.88 : 0.82, depthWrite: false });
       const outline = new THREE.Mesh(node.geometry, material);
       outline.name = `${node.name}-tether-highlight`;
@@ -352,9 +352,9 @@ function ModelScene({ selected, visibleLayers, onSelect, onFocus, surfaceAlpha, 
   return <>
     <ModelReady onLoaded={onLoaded} />
     <ambientLight intensity={1.2} />
-    <directionalLight position={[4, 6, 4]} intensity={1.9} color="#e5e9dd" />
-    <directionalLight position={[-4, 2, -3]} intensity={0.85} color="#91b99d" />
-    <directionalLight position={[0, 4, 5]} intensity={0.38} color="#d8be8f" />
+    <directionalLight position={[4, 6, 4]} intensity={1.9} color="#e5e5e5" />
+    <directionalLight position={[-4, 2, -3]} intensity={0.85} color="#a8a8a8" />
+    <directionalLight position={[0, 4, 5]} intensity={0.38} color="#c7c7c7" />
     <Anatomy visibleLayers={visibleLayers} selected={selected} onSelect={onSelect} onFocus={setFocus} onFrame={reportFrame} frameTarget={frameTarget} surfaceAlpha={surfaceAlpha} isolated={isolated} focusKey={focusKey} highlightState={highlightState} priorityStructure={priorityStructure} priorityState={priorityState} assetAttempt={assetAttempt} compact={compact} reducedMotion={reducedMotion} autoTurn={autoTurn} />
     <CameraControls resetKey={resetKey} face={face} focus={focus} frameTarget={frameTarget} reducedMotion={reducedMotion} zoomRequest={zoomRequest} compact={compact} autoTurn={autoTurn} />
   </>;
@@ -444,6 +444,6 @@ export function AnatomyViewer({ selectedMetric, selectedStructure, focusRequestK
       {!compact && <div className="anatomy-selection"><span>SELECTED STRUCTURE</span><b>{info?.label ?? 'Select a structure'}</b>{info?.metricKeys.length ? <div className="anatomy-linked-metrics">{info.metricKeys.map((key) => <button key={key} className={selectedMetric === key ? 'active' : ''} aria-pressed={selectedMetric === key} onClick={() => onMetric(key as MetricKey)}>{metricNames[key]}</button>)}</div> : <small>{info ? 'Not assessed · no linked measurement' : 'Choose a related reading marker'}</small>}</div>}
     </div>
     {!compact && <div className="anatomy-tools"><div className="layer-tools"><span>LAYERS</span>{layers.map((layer) => <button key={layer.id} className={visibleLayers.has(layer.id) ? 'on' : ''} aria-pressed={visibleLayers.has(layer.id)} onClick={() => toggleLayer(layer.id)}><i />{layer.label}</button>)}</div><div className="surface-control"><label htmlFor="surfaceOpacity">Surface</label><input id="surfaceOpacity" type="range" min="0.1" max="1" step="0.05" value={surfaceAlpha} onChange={(e) => setSurfaceAlpha(Number(e.target.value))} /><button className={isolated ? 'active' : ''} aria-pressed={isolated} disabled={!selected} onClick={() => setIsolated((x) => !x)}>Isolate selection</button></div></div>}
-    {!compact && <div className="anatomy-credit">BodyParts3D, © The Database Center for Life Science · CC BY 4.0 · Adapted for Tether</div>}
+    {!compact && <div className="anatomy-credit">BodyParts3D, © The Database Center for Life Science · CC BY 4.0 · Adapted for Aster</div>}
   </div>;
 }
