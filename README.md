@@ -2,7 +2,7 @@
 
 Aster is an offline desktop demonstration for the 2026 NASA Space Apps Challenge. It helps an astronaut notice a health pattern, inspect the evidence, complete a guided review, record an action, and reassess. It uses fictional crew data and curated NASA and Canadian Space Agency research context; it is not a clinical tool and does not contact ground teams or claim agency endorsement.
 
-**Try the live browser demo:** [Open Aster](https://johnbenedictbolatin.github.io/tether/). It needs an internet connection to load, requires no account, and keeps browser entries on the device and browser where they were recorded. The [source code](https://github.com/JohnBenedictBolatin/tether) is also available on GitHub.
+**Try the live browser demo:** [Open Aster](https://johnbenedictbolatin.github.io/aster/). It needs an internet connection to load, requires no account, and keeps browser entries on the device and browser where they were recorded. The [source code](https://github.com/JohnBenedictBolatin/aster) is also available on GitHub.
 
 ## Run the browser preview
 
