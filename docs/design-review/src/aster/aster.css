@@ -985,3 +985,80 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #5b5b5b; }
   .guided-main .timeline-event time { grid-column: 1; }
   .aster-dialog { padding: 18px; max-height: 92dvh; }
 }
+
+/* Keep card geometry steady and use one white language for selection. */
+.aster-shell {
+  --selection-highlight: #fff;
+  --selection-surface: #191919;
+}
+.home-reading-grid { align-items: stretch; }
+.home-reading-card { min-height: 88px; grid-template-rows: auto 1fr auto; }
+.aster-shell :is(
+  .home-reading-card[aria-pressed="true"],
+  .reading-cell.reading-selected,
+  .scenario-selector > button[aria-selected="true"],
+  .instrument-reading[aria-pressed="true"],
+  .presenter-scenarios button.selected,
+  .anatomy-structure-list button.selected
+),
+.aster-shell .radlab-reference article.radlab-record-selected {
+  border-color: var(--selection-highlight);
+  background: var(--selection-surface);
+  box-shadow: inset 0 -2px var(--selection-highlight);
+  color: #fff;
+}
+.aster-shell .aster-nav button.active {
+  position: relative;
+  background: var(--selection-surface);
+  color: #fff;
+}
+.aster-shell .aster-nav button.active::before {
+  position: absolute;
+  inset: 9px auto 9px 0;
+  width: 2px;
+  background: var(--selection-highlight);
+  content: "";
+}
+.aster-shell :is(
+  .aster-nav button.active,
+  .home-reading-card[aria-pressed="true"],
+  .reading-cell.reading-selected,
+  .scenario-selector > button[aria-selected="true"],
+  .metric-index-tabs button[aria-selected="true"],
+  .instrument-reading[aria-pressed="true"],
+  .presenter-scenarios button.selected,
+  .anatomy-structure-list button.selected
+) .gradient-icon {
+  filter: brightness(0) invert(1);
+}
+.aster-shell .metric-toggle button[aria-pressed="true"] {
+  border: 1px solid var(--selection-highlight);
+  background: var(--selection-highlight);
+  color: #111;
+}
+.aster-shell .metric-index-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--selection-highlight);
+  color: #fff;
+}
+.aster-shell :is(
+  .anatomy-view-controls button[aria-pressed="true"],
+  .anatomy-linked-metrics button.active,
+  .layer-tools button.on,
+  .surface-control button.active
+) {
+  border-color: var(--selection-highlight);
+  color: #fff;
+}
+.aster-shell .layer-tools button.on i { border-color: #fff; background: #fff; }
+.aster-shell :is(.timeline-event-selected, .home-event-selected, .recent-readings > button[aria-pressed="true"], .history-row[open] > summary) {
+  background: var(--selection-surface);
+  box-shadow: inset 2px 0 var(--selection-highlight);
+}
+.aster-shell :is(.timeline-event-selected .timeline-glyph, .home-event-selected > svg) { color: var(--selection-highlight); }
+.aster-shell :is(.answer-prompts button[aria-pressed="true"], .reference-prompts button[aria-pressed="true"]) {
+  border-bottom-color: var(--selection-highlight);
+  color: #fff;
+}
+@media (max-width: 520px) {
+  .home-reading-card { min-height: 68px; grid-template-rows: none; }
+}
