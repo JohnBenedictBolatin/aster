@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 const AnatomyViewer = lazy(() => import('../AnatomyViewer').then((module) => ({ default: module.AnatomyViewer })));
 import type { ContextEntry, Followup, Metric, Observation } from '../domain';
-import { EVIDENCE, METRICS, METRIC_ORDER, RULE_VERSION, SCENARIOS, SCENARIO_NOW, compareToPersonalBaseline, createInitialSnapshot, id, makeScenarioWorkspace, type AsterSnapshot, type BaselineComparison, type CabinReading, type Handoff, type InvestigationStatus, type MissionEvent, type MissionEventKind, type ScenarioId, type ScenarioWorkspace } from './domain';
+import { EVIDENCE, METRICS, METRIC_ORDER, RULE_VERSION, SCENARIOS, compareToPersonalBaseline, createInitialSnapshot, id, type AsterSnapshot, type BaselineComparison, type Handoff, type InvestigationStatus, type MissionEvent, type MissionEventKind, type ScenarioId, type ScenarioWorkspace } from './domain';
 import { privateMaterialForHandoff, workspaceForExport } from './export';
 import { evaluateAssessment } from './assessment';
 import { ReactionCheck } from './ReactionCheck';
@@ -15,14 +15,13 @@ import { TrendChart } from './TrendChart';
 import { useHeartRateMonitor } from '../useHeartRateMonitor';
 import { bodyTargetForMetric } from '../assessment';
 import { AsterMark, MissionNavigation, type Page } from './MissionNavigation';
-import { PresenterDrawer, type PresenterBranch } from './PresenterDrawer';
 import { GradientIcon, selectionGradientStyle } from './GradientIcon';
 import { ObservationDetails, Pill, SectionHeading } from './PresentationPrimitives';
 import { CabinPanel, EvidenceRows, RadiationPanel, type NavigatorEvidence } from './InvestigationEvidence';
 import { anatomyManifest } from '../anatomyManifest';
 import { UrgentGuidance } from './UrgentGuidance';
 import { AsterDialog, GuidedReview, ReviewOverview, reviewDate } from './GuidedReview';
-import { attachFollowupResults, inspectionItems, matchingTask, REVIEW_NAMES, selectGuidance, type ReviewAction } from './guidance';
+import { inspectionItems, matchingTask, REVIEW_NAMES, selectGuidance, type ReviewAction } from './guidance';
 import './aster.css';
 
 type Feedback = { title: string; body: string } | null;
@@ -55,26 +54,18 @@ function createEvent(scenarioId: ScenarioId, kind: MissionEventKind, at: string,
   return { id: id('EVENT'), scenarioId, kind, at, title, detail, provenance, synthetic };
 }
 
-function evolveScenarioClock(snapshot: AsterSnapshot, at: string): AsterSnapshot {
-  const scenarioId = snapshot.activeScenario;
-  const workspace = snapshot.workspaces[scenarioId];
-  const received = workspace.handoffs.filter((handoff) => handoff.status === 'transmitted' && handoff.deliverAt
-    && Date.parse(handoff.deliverAt) <= Date.parse(at));
-  const nextWorkspace: ScenarioWorkspace = {
-    ...workspace,
-    handoffs: workspace.handoffs.map((handoff) => received.some((item) => item.id === handoff.id)
-      ? { ...handoff, status: 'received' } : handoff),
-    events: received.length ? [...workspace.events, ...received.map((handoff) => createEvent(scenarioId, 'handoff', handoff.deliverAt!,
-      'Handoff received', 'The configured one-way delivery time elapsed.', 'Presenter-controlled communication state'))] : workspace.events,
-  };
-  return { ...snapshot, scenarioNow: at, scenarioTimes: { ...snapshot.scenarioTimes, [scenarioId]: at },
-    workspaces: { ...snapshot.workspaces, [scenarioId]: nextWorkspace } };
-}
-
 function metricValue(observation: Observation): string {
   if (observation.metric === 'bp') return `${observation.value}/${observation.secondary ?? '—'} ${observation.unit}`;
   if (observation.metric === 'sleep') return `${Number(observation.value).toFixed(1)} h`;
   return `${observation.value}${observation.unit ? ` ${observation.unit}` : ''}`;
+}
+
+function ReadingValueText({ observation }: { observation: Observation }) {
+  const numeric = observation.metric !== 'mood' && Number.isFinite(Number(observation.value));
+  const value = observation.metric === 'bp'
+    ? `${observation.value}/${observation.secondary ?? '—'}`
+    : observation.metric === 'sleep' ? Number(observation.value).toFixed(1) : String(observation.value);
+  return <><span className={numeric ? 'reading-value-number' : undefined}>{value}</span>{observation.unit && <span className="reading-value-unit">{observation.unit}</span>}</>;
 }
 
 function missionEventsForScenario(scenarioId: ScenarioId, workspace: ScenarioWorkspace, nowMs: number): MissionEvent[] {
@@ -152,7 +143,6 @@ export default function AsterApp() {
   const [snapshot, setSnapshot] = useState<AsterSnapshot | null>(null);
   const snapshotRef = useRef<AsterSnapshot | null>(null);
   const saveChain = useRef(Promise.resolve());
-  const playbackRef = useRef('');
   const [storageMode, setStorageMode] = useState<StorageMode>('opening');
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState<Page>('log');
@@ -160,8 +150,6 @@ export default function AsterApp() {
   const [selectedRecordId, setSelectedRecordId] = useState('FIXTURE-heart-16');
   const [selectedTimelineId, setSelectedTimelineId] = useState('');
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('RAD-16');
-  const [showPresenter, setShowPresenter] = useState(false);
-  const [runningClock, setRunningClock] = useState(false);
   const [liveClock, setLiveClock] = useState('');
   const [reviewOpen, setReviewOpen] = useState(false);
   const [anatomyOpen, setAnatomyOpen] = useState(false);
@@ -215,9 +203,7 @@ export default function AsterApp() {
       snapshotRef.current = value;
       setSnapshot(value);
       setStorageMode(mode);
-      setShowPresenter(false);
       setLiveClock(value.scenarioNow);
-      playbackRef.current = value.scenarioNow;
       if (!saved) enqueueSave(value);
     }).catch(() => {
       if (!active) return;
@@ -226,21 +212,9 @@ export default function AsterApp() {
       setSnapshot(value);
       setStorageMode('error');
       setLiveClock(value.scenarioNow);
-      playbackRef.current = value.scenarioNow;
     });
     return () => { active = false; };
   }, [enqueueSave]);
-
-  useEffect(() => {
-    if (!runningClock || !snapshot) return;
-    const timer = window.setInterval(() => {
-      const next = new Date(Date.parse(playbackRef.current) + 1_000).toISOString();
-      playbackRef.current = next;
-      setLiveClock(next);
-    }, 1_000);
-    const saveTimer = window.setInterval(() => commitSnapshot((current) => evolveScenarioClock(current, playbackRef.current)), 10_000);
-    return () => { window.clearInterval(timer); window.clearInterval(saveTimer); };
-  }, [runningClock, !!snapshot, commitSnapshot]);
 
   const viewSnapshot = snapshot && liveClock ? { ...snapshot, scenarioNow: liveClock } : snapshot;
   const scenarioId = viewSnapshot?.activeScenario ?? 'recovery';
@@ -261,16 +235,14 @@ export default function AsterApp() {
   }, [commitSnapshot]);
 
   const setScenario = useCallback((nextScenario: ScenarioId) => {
-    setRunningClock(false);
     setSelectedMetric('heart');
     setBaselineMetric('heart');
     setSelectedRecordId('FIXTURE-heart-16');
     setFeedback(null);
     setPage('investigations');
     setReviewOpen(true); setInspectionOpen(false); setEntryTaskId(undefined); setReviewTaskId(null);
-    const previousTime = playbackRef.current || scenarioTime;
+    const previousTime = scenarioTime;
     const nextTime = snapshotRef.current?.scenarioTimes[nextScenario] ?? scenarioTime;
-    playbackRef.current = nextTime;
     commitSnapshot((current) => ({ ...current, activeScenario: nextScenario, scenarioNow: nextTime,
       scenarioTimes: { ...current.scenarioTimes, [current.activeScenario]: previousTime } }));
     setLiveClock(nextTime);
@@ -354,10 +326,24 @@ export default function AsterApp() {
     .sort((a, b) => a.at.localeCompare(b.at)) ?? [];
 
   const events = useMemo(() => workspace ? missionEventsForScenario(scenarioId, workspace, nowMs) : [], [workspace, scenarioId, nowMs]);
-  const historyRows = useMemo(() => viewSnapshot ? SCENARIO_IDS.flatMap((key) => {
-    const at = key === viewSnapshot.activeScenario ? viewSnapshot.scenarioNow : viewSnapshot.scenarioTimes[key];
-    return missionEventsForScenario(key, viewSnapshot.workspaces[key], Date.parse(at)).map((event) => ({ scenarioId: key, event }));
-  }).sort((a, b) => b.event.at.localeCompare(a.event.at)) : [], [viewSnapshot]);
+  const historyRows = useMemo(() => {
+    if (!viewSnapshot) return [];
+    const unique = new Map<string, { scenarioIds: ScenarioId[]; event: MissionEvent }>();
+    for (const key of SCENARIO_IDS) {
+      const at = key === viewSnapshot.activeScenario ? viewSnapshot.scenarioNow : viewSnapshot.scenarioTimes[key];
+      const scenarioEvents = missionEventsForScenario(key, viewSnapshot.workspaces[key], Date.parse(at));
+      for (const event of scenarioEvents) {
+        const identity = [event.at, event.kind, event.title, event.detail, event.provenance, event.synthetic].join('\u001f');
+        const existing = unique.get(identity);
+        if (existing) {
+          if (!existing.scenarioIds.includes(key)) existing.scenarioIds.push(key);
+        } else {
+          unique.set(identity, { scenarioIds: [key], event });
+        }
+      }
+    }
+    return [...unique.values()].sort((a, b) => b.event.at.localeCompare(a.event.at));
+  }, [viewSnapshot]);
 
   const assessment = useMemo(() => evaluateAssessment({
     scenarioId, observations: workspace?.observations ?? [], contexts: workspace?.contexts ?? [],
@@ -413,130 +399,6 @@ export default function AsterApp() {
         'Handoff saved to local queue', 'Draft saved locally.', 'Local-only handoff')],
     }));
     setFeedback({ title: 'Handoff queued locally', body: 'Advance the mission clock to update delivery status.' });
-  };
-
-  const simulateDelivery = () => {
-    const handoff = workspace?.handoffs.find((item) => item.scenarioId === scenarioId && item.status === 'queued');
-    if (!handoff) return;
-    const delay = snapshot?.settings.linkDelayMinutes ?? 12;
-    const transmitAt = new Date(nowMs + delay * 60_000).toISOString();
-    commitWorkspace((current, snapshotNow) => ({ ...current, handoffs: current.handoffs.map((item) => item.id === handoff.id
-      ? { ...item, status: 'transmitted', deliverAt: transmitAt } : item),
-      events: [...current.events, createEvent(snapshotNow.activeScenario, 'handoff', snapshotNow.scenarioNow,
-        'Handoff marked transmitted', `One-way link delay · ${delay} minutes.`, 'Presenter-controlled communication state')],
-    }));
-    setFeedback({ title: 'Handoff in transit', body: `Advance mission time by ${delay} minutes to show receipt.` });
-  };
-
-  const advanceClock = (milliseconds: number) => {
-    setRunningClock(false);
-    const advanced = new Date(nowMs + milliseconds).toISOString();
-    playbackRef.current = advanced;
-    setLiveClock(advanced);
-    commitSnapshot((current) => evolveScenarioClock(current, advanced));
-    setFeedback({ title: 'Mission clock advanced', body: `${stamp(advanced)}. Events, reminders, and handoff delivery use mission time.` });
-  };
-
-  const presenterBranch = (branch: PresenterBranch) => {
-    if (!workspace) return;
-    const eventTitle: Record<typeof branch, string> = {
-      recovery: 'Crew follow-up recorded', persistent: 'Follow-up still differs from personal history',
-      'sensor-error': 'Sensor contact lost', 'cabin-clear': 'Environmental follow-up recorded',
-      'cabin-sensor': 'Cabin sensor requires verification', 'radiation-gap': 'Radiation data gap recorded',
-      'radiation-record': 'Radiation instrument event recorded', 'missing-evidence': 'Follow-up evidence unavailable',
-    };
-    const at = new Date(nowMs + 24 * 60 * 60 * 1000).toISOString();
-    if (branch === 'missing-evidence') {
-      const hasOpenFollowup = workspace.tasks.some((item) => item.episodeId === `INV-${scenarioId}` && item.status === 'open');
-      const task: Followup | undefined = hasOpenFollowup ? undefined : {
-        id: id('TASK'), kind: 'routine', episodeId: `INV-${scenarioId}`,
-        title: scenarioId === 'recovery' ? 'Record a comparable recovery follow-up' : scenarioId === 'cabin' ? 'Review the sensor and symptom timeline' : 'Review instrument coverage and data gaps',
-        due: new Date(nowMs + 6 * 60 * 60 * 1000).toISOString(), createdAt: scenarioTime, status: 'open', dataset: 'demo', synthetic: true,
-      };
-      commitWorkspace((current, snapshotNow) => ({ ...current,
-        tasks: task ? [...current.tasks, task] : current.tasks,
-        investigations: current.investigations.map((item) => item.id === `INV-${scenarioId}`
-          ? { ...item, status: 'awaiting-measurement', lastUpdatedAt: at } : item),
-        events: [...current.events, createEvent(snapshotNow.activeScenario, 'action', at, eventTitle[branch],
-          'No new follow-up measurement or record is available. The task remains open and the previous evidence is preserved without treating it as current.', 'Presenter-controlled missing-evidence branch')],
-      }));
-      playbackRef.current = at;
-      setLiveClock(at);
-      commitSnapshot((current) => evolveScenarioClock(current, at));
-      setFeedback({ title: 'Follow-up evidence is missing', body: 'No new reading was added. The investigation is waiting for a measurement and the follow-up remains open.' });
-      return;
-    }
-    if (scenarioId === 'recovery') {
-      const values = branch === 'recovery' ? { heart: 72, sleep: 7.2 } : { heart: 87, sleep: 4.2 };
-      if (branch === 'sensor-error') {
-        const sample: Observation = { id: id('REPLAY'), metric: 'heart', value: 64, unit: 'bpm', at, method: 'Bluetooth heart-rate monitor',
-          context: 'At rest · seated', note: 'Signal contact was not detected.', source: 'Heart-rate sensor · contact lost', synthetic: true,
-          dataset: 'demo', quality: 'verify', guidanceVersion: 'Aster scenario rules v1', missionPhase: snapshot?.settings.phase ?? 'Transit',
-          provenance: { kind: 'scenario-branch', label: 'Presenter-selected sensor fault' } };
-        commitWorkspace((current, snapshotNow) => ({ ...current, observations: [...current.observations, sample],
-          investigations: current.investigations.map((item) => item.id === `INV-${scenarioId}`
-            ? { ...item, status: 'awaiting-measurement', lastUpdatedAt: at } : item),
-          events: [...current.events, createEvent(snapshotNow.activeScenario, 'measurement', at, eventTitle[branch], 'The measurement is marked for verification and is excluded from the personal reference comparison.', 'Presenter-controlled branch')],
-        }));
-      } else {
-        commitWorkspace((current, snapshotNow) => {
-          const additions: Observation[] = ([['heart', values.heart, 8], ['sleep', values.sleep, 6]] as const).map(([metric, value, hour]) => ({
-            id: id('REPLAY'), metric, value, unit: METRICS[metric].unit, at, method: metric === 'heart' ? 'Crew self-measurement' : 'Crew check-in',
-            context: metric === 'heart' ? 'At rest · seated' : 'Main sleep period', note: '', source: 'Presenter-selected scenario outcome',
-            synthetic: true, dataset: 'demo', quality: 'usable', guidanceVersion: 'Aster scenario rules v1', missionPhase: snapshotNow.settings.phase,
-            provenance: { kind: 'scenario-branch', label: 'Presenter-selected alternate outcome', recordedHourUtc: hour },
-          } as Observation));
-          const nextClock = at;
-          return { ...current, observations: [...current.observations, ...additions],
-            events: [...current.events, createEvent(snapshotNow.activeScenario, 'measurement', at, eventTitle[branch],
-              `Follow-up outcome · pulse ${values.heart} bpm · sleep ${values.sleep.toFixed(1)} h. Assessment still uses personal history.`, 'Presenter-controlled branch')],
-            investigations: current.investigations.map((item) => item.id === `INV-${scenarioId}`
-              ? { ...item, status: 'awaiting-reassessment', lastUpdatedAt: nextClock } : item),
-          };
-        });
-      }
-    } else if (scenarioId === 'cabin') {
-      const reading: CabinReading = { id: id('CABIN-REPLAY'), at, value: branch === 'cabin-clear' ? 740 : 2050,
-        unit: 'ppm', instrument: branch === 'cabin-sensor' ? 'Cabin CO₂ sensor · contact uncertain' : 'Cabin CO₂ sensor',
-        quality: branch === 'cabin-sensor' ? 'verify' : 'usable', synthetic: true };
-      commitWorkspace((current, snapshotNow) => ({ ...current, cabinReadings: [...current.cabinReadings, reading],
-        investigations: current.investigations.map((item) => item.id === `INV-${scenarioId}`
-          ? { ...item, status: branch === 'cabin-sensor' ? 'awaiting-measurement' : 'awaiting-reassessment', lastUpdatedAt: at } : item),
-        events: [...current.events, createEvent(snapshotNow.activeScenario, 'environment', at, eventTitle[branch],
-          `${reading.value} ppm · ${reading.instrument}`, 'Presenter-controlled scenario branch')],
-      }));
-    } else {
-      commitWorkspace((current, snapshotNow) => ({ ...current,
-        investigations: current.investigations.map((item) => item.id === `INV-${scenarioId}`
-          ? { ...item, status: branch === 'radiation-gap' ? 'awaiting-measurement' : 'awaiting-reassessment', lastUpdatedAt: at } : item),
-        events: [...current.events, createEvent(snapshotNow.activeScenario, 'exposure', at, eventTitle[branch],
-          branch === 'radiation-gap' ? 'The missing interval remains unknown; no dose is inferred from the gap.'
-            : 'Instrument, timestamp, and unit stay attached; no personal dose is inferred.', 'Presenter-controlled scenario branch')],
-        radiationReadings: branch === 'radiation-gap' ? current.radiationReadings : [...current.radiationReadings,
-          { id: id('RAD-REPLAY'), at, value: 0.36, unit: 'µGy/h', instrument: 'Dosimeter', quality: 'usable', synthetic: true }],
-      }));
-    }
-    playbackRef.current = at;
-    setLiveClock(at);
-    commitSnapshot((current) => evolveScenarioClock(current, at));
-    commitWorkspace(current=>attachFollowupResults(current,scenarioId,at));
-    setFeedback({ title: 'Follow-up outcome loaded', body: 'New evidence added. Earlier observations remain intact.' });
-  };
-
-  const resetScenario = () => {
-    if (!window.confirm(`Reset ${SCENARIOS[scenarioId].label.toLowerCase()} to its starting observations? Live readings and other investigations will be preserved.`)) return;
-    const fresh = makeScenarioWorkspace(scenarioId);
-    const resetAt = new Date(SCENARIO_NOW).toISOString();
-    playbackRef.current = resetAt;
-    setLiveClock(resetAt);
-    setRunningClock(false);
-    commitSnapshot((current) => ({ ...current, scenarioNow: resetAt, scenarioTimes: { ...current.scenarioTimes, [scenarioId]: resetAt },
-      workspaces: { ...current.workspaces, [scenarioId]: fresh } }));
-    setSelectedRecordId('FIXTURE-heart-16');
-    setSelectedMetric('heart');
-    setBaselineMetric('heart');
-    setReactionOpen(false);
-    setFeedback({ title: 'Scenario reset', body: 'The selected scenario has returned to its reproducible starting point.' });
   };
 
   const saveCrewNote = () => {
@@ -605,9 +467,8 @@ export default function AsterApp() {
     const target = viewSnapshot?.workspaces[key];
     if (!target) return;
     let record = target.observations.find((item) => event.id === `TIMELINE-${item.id}`);
-    const dayPrefix = `TIMELINE-DAY-${key}-`;
-    if (!record && event.id.startsWith(dayPrefix)) {
-      const day = event.id.slice(dayPrefix.length);
+    if (!record && event.id.startsWith('TIMELINE-DAY-')) {
+      const day = event.at.slice(0, 10);
       const dayRecords = target.observations.filter((item) => item.at.startsWith(day));
       record = dayRecords.find((item) => item.metric === selectedMetric)
         ?? dayRecords.find((item) => item.metric === 'heart') ?? dayRecords[0];
@@ -771,7 +632,7 @@ export default function AsterApp() {
       <header className="aster-topbar">
         <div className="aster-topbar-left"><button type="button" className="icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={19}/></button>
           <div className="mission-day"><span>MISSION DAY</span><strong>{String(missionDay).padStart(3, '0')}</strong><i aria-hidden="true"/></div>
-          <time className="topbar-time" dateTime={scenarioTime}>{stamp(scenarioTime)}</time><span className="example-data-label">Example crew data</span></div>
+          <time className="topbar-time" dateTime={scenarioTime}>{stamp(scenarioTime)}</time></div>
         <div className="aster-topbar-right"><div className={`storage-state ${storageMode === 'error' ? 'storage-error' : ''}`} role="status"><Save size={13}/>{saving ? 'Saving' : storageMode === 'desktop' ? 'On-device vault' : storageMode === 'error' ? 'Storage error' : storageMode === 'browser-fallback' ? 'Local fallback' : 'Saved locally'}</div>
           <button type="button" className="topbar-quiet urgent-entry" onClick={() => setUrgentOpen(true)} aria-label="Open urgent symptom guidance"><AlertTriangle size={15}/><span>Urgent concern</span></button>
           <button type="button" className="primary-button topbar-add" onClick={() => { setEntryChoiceOpen(true); setEntryTaskId(undefined); setFormError(''); }}><span>+ Add entry</span></button></div>
@@ -784,7 +645,7 @@ export default function AsterApp() {
           <header className="page-title-row"><div><h1>Home</h1><p>Readings, reviews, and recent mission activity.</p></div><span className="scenario-stamp"><i aria-hidden="true"/>{scenario.label}</span></header>
           <section className="home-focus">
             <GradientIcon name={scenarioId} size={46} glass/>
-            <div className="home-focus-copy"><div className="home-focus-meta"><Pill kind="neutral">{statusText[investigation.status]}</Pill><span>Current health review</span></div>
+            <div className="home-focus-copy"><div className="home-focus-meta"><Pill kind="neutral">{statusText[investigation.status]}</Pill></div>
               <h2>{guidance.title}</h2><p>{guidance.summary}</p><span className="home-focus-next">Next step · {guidance.next.reason}</span></div>
             <div className="home-focus-actions"><button className="primary-button" onClick={()=>openReview(scenarioId)}>Continue review <ArrowRight size={15}/></button>
               <button className="text-button" onClick={()=>navigate('investigations')}>All reviews <span className="home-count">{openReviewCount}</span></button></div>
@@ -799,7 +660,7 @@ export default function AsterApp() {
               const currentReading=reading&&isDisplayableCurrentReading(reading,scenarioTime)?reading:undefined;
               return <button key={metric} type="button" className={`home-reading-card ${selectedMetric===metric?'home-reading-selected':''}`} aria-pressed={selectedMetric===metric} style={selectionGradientStyle(metric)} onClick={()=>selectMetric(metric)}>
                 <span className="home-reading-label"><GradientIcon name={metric} size={23}/>{METRICS[metric].short}</span>
-                <strong className="instrument-value">{currentReading?metricValue(currentReading):'—'}</strong>
+                <strong className="instrument-value">{currentReading?<ReadingValueText observation={currentReading}/>: '—'}</strong>
                 <span className={`home-reading-status ${status==='Needs verification'?'attention':''}`}>{status}</span>
               </button>;
             })}</div>
@@ -837,14 +698,12 @@ export default function AsterApp() {
                 <p className="plain-note home-anatomy-note">The model shows location only. Its colors do not indicate health status.</p>
               </section>
 
-              <section className="workspace-section home-followups-section">
-                <SectionHeading title="Follow-ups" detail="Tasks saved for the current review"
-                  aside={<button className="quiet-link" onClick={()=>navigate('care')}>Care plan <ArrowRight size={14}/></button>}/>
+              {currentReviewTasks.length > 0 && <section className="workspace-section home-followups-section">
+                <SectionHeading title="Follow-ups" detail="Tasks saved for the current review"/>
                 {currentReviewTasks.slice(0,3).map(task=><button key={task.id} type="button" className="home-event" onClick={()=>openCareTask(scenarioId,task.id)}>
                   <span><strong>{followupStatus(task,scenarioTime)}</strong><span>{task.title}</span></span><span className="home-followup-time"><CalendarClock size={13}/>{reviewDate(task.due)}</span><ArrowRight size={15}/>
                 </button>)}
-                {!currentReviewTasks.length&&<p className="empty-message">No follow-up is scheduled for this review.</p>}
-              </section>
+              </section>}
             </aside>
           </div>
         </>}
@@ -852,7 +711,7 @@ export default function AsterApp() {
         {activePage === 'measurements' && <>
           <header className="page-title-row"><h1>My readings</h1></header>
           <section className="workspace-section measurement-index"><div className="metric-index-tabs" role="tablist" aria-label="Health indicator">{baseMetrics.map((metric) => <button role="tab" type="button" aria-selected={selectedMetric === metric} key={metric} style={selectionGradientStyle(metric)} onClick={() => selectMetric(metric)}><GradientIcon name={metric}/>{METRICS[metric].short}</button>)}</div>
-            <div className="selected-measurement"><div className="measurement-main"><div className="metric-overview"><div><span className="measurement-unit-label">{METRICS[selectedMetric].label}</span><h2>{savedReading&&isDisplayableCurrentReading(savedReading,scenarioTime)?metricValue(savedReading):'No current reading'}</h2><p>{savedReading ? `Last recorded · ${stamp(savedReading.at)}` : 'Record a value to begin a comparison.'}</p></div><Pill kind={savedReading?.quality!=='usable'&&savedReading?'attention':'quiet'}>{readingStatus(savedReading,scenarioTime)}</Pill></div>
+            <div className="selected-measurement"><div className="measurement-main"><div className="metric-overview"><div><span className="measurement-unit-label">{METRICS[selectedMetric].label}</span><h2>{savedReading&&isDisplayableCurrentReading(savedReading,scenarioTime)?<ReadingValueText observation={savedReading}/>: <span className="reading-empty">No current reading</span>}</h2><p>{savedReading ? `Last recorded · ${stamp(savedReading.at)}` : 'Record a value to begin a comparison.'}</p></div><Pill kind={savedReading?.quality!=='usable'&&savedReading?'attention':'quiet'}>{readingStatus(savedReading,scenarioTime)}</Pill></div>
               {selectedMetric !== 'mood' && activeComparison && <details className="review-disclosure"><summary>View trend<span>Compare recorded values over time</span></summary><TrendChart comparison={activeComparison} points={recentPoints.map((item) => ({ id: item.id, at: item.at, value: Number(item.value), unit: item.unit }))} selectedId={selectedRecordId} onSelect={observePoint}/></details>}
               {selectedMetric === 'bp' && <p className="measurement-chart-note">Chart shows systolic pressure; both values remain in each record.</p>}
               {savedReading && <ObservationDetails observation={savedReading}/>}
@@ -860,9 +719,9 @@ export default function AsterApp() {
               <details className="review-disclosure comparison-panel"><summary>Compare with your usual readings<span>Previous range and matching days</span></summary><p>{changeCopy(selectedMetric, baselineMemo[selectedMetric])}</p>{baselineMemo[selectedMetric].median !== null && <div className="comparison-facts"><span><small>Usual middle value</small><strong>{baselineMemo[selectedMetric].median} {baselineMemo[selectedMetric].unit}</strong></span><span><small>Previous range</small><strong>{baselineMemo[selectedMetric].low ?? '—'}–{baselineMemo[selectedMetric].high ?? '—'} {baselineMemo[selectedMetric].unit}</strong></span><span><small>Days with matching readings</small><strong>{baselineMemo[selectedMetric].count}/14</strong></span></div>}</details>
               <details className="record-details collection-guide"><summary>Collection guide</summary><p>{METRICS[selectedMetric].meaning} {METRICS[selectedMetric].why}</p><ol className="guide-steps"><li>{METRICS[selectedMetric].how}</li><li>Record the actual method and conditions used. Mismatches do not count as comparable history.</li><li>{METRICS[selectedMetric].cannot}</li></ol>
               <button type="button" className="quiet-link" onClick={() => navigate('reference')}>Open supporting sources <ArrowRight size={14}/></button></details>
-            </div><aside className="recent-readings"><SectionHeading title="Recent records"/>{workspace.observations.filter((item) => item.metric === selectedMetric && isDisplayableCurrentReading(item,scenarioTime)).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 18).map((item) => <button key={item.id} type="button" onClick={() => observePoint(item.id)} aria-pressed={selectedRecordId === item.id} style={selectionGradientStyle(selectedMetric)}><span><strong>{metricValue(item)}</strong><small>{item.context} · {item.method}</small></span><time>{stamp(item.at)}</time></button>)}
+            </div><aside className="recent-readings"><SectionHeading title="Recent records"/>{workspace.observations.filter((item) => item.metric === selectedMetric && isDisplayableCurrentReading(item,scenarioTime)).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 18).map((item) => <button key={item.id} type="button" onClick={() => observePoint(item.id)} aria-pressed={selectedRecordId === item.id} style={selectionGradientStyle(selectedMetric)}><span><strong><ReadingValueText observation={item}/></strong><small>{item.context} · {item.method}</small></span><time>{stamp(item.at)}</time></button>)}
               {workspace.observations.filter((item) => item.metric === selectedMetric && isDisplayableCurrentReading(item,scenarioTime)).length === 0 && <p className="empty-message">No current records. Older entries remain in History.</p>}</aside></div></section>
-          {snapshot.liveObservations.length > 0 && <section className="workspace-section live-records-list"><SectionHeading title="Saved live records" detail="Separately stored · conditions need review"/>{snapshot.liveObservations.map((item) => <div key={item.id}><strong>{isDisplayableCurrentReading(item,scenarioTime)?metricValue(item):'—'}</strong><span>{stamp(item.at)} · {readingStatus(item,scenarioTime)}</span></div>)}</section>}
+          {snapshot.liveObservations.length > 0 && <section className="workspace-section live-records-list"><SectionHeading title="Saved live records" detail="Separately stored · conditions need review"/>{snapshot.liveObservations.map((item) => <div key={item.id}><strong>{isDisplayableCurrentReading(item,scenarioTime)?<ReadingValueText observation={item}/>: '—'}</strong><span>{stamp(item.at)} · {readingStatus(item,scenarioTime)}</span></div>)}</section>}
         </>}
 
         {activePage === 'care' && <>
@@ -886,10 +745,11 @@ export default function AsterApp() {
         {activePage === 'history' && <>
           <header className="page-title-row"><div><h1>Mission history</h1><p>Readings, check-ins, and actions across health reviews.</p></div></header>
           <section className="workspace-section history-section" style={selectionGradientStyle('history')}><SectionHeading title={`${historyRows.length} recorded events`} detail="Select an entry to inspect where it came from and open its linked record or review."/>
-            {historyRows.map(({scenarioId:key,event})=><details className="history-row" key={`${key}-${event.id}`}>
-              <summary><time>{stamp(event.at)}</time><span><strong>{event.title}</strong><small>{event.detail}</small></span><span className="history-scenario">{SCENARIOS[key].label}</span></summary>
+            {historyRows.map(({scenarioIds,event})=><details className="history-row" key={`${event.at}-${event.kind}-${event.title}-${event.provenance}`}>
+              <summary><time>{stamp(event.at)}</time><span><strong>{event.title}</strong><small>{event.detail}</small></span><span className="history-scenario">{scenarioIds.length === 1 ? SCENARIOS[scenarioIds[0]].label : `${scenarioIds.length} related reviews`}</span></summary>
               <div className="history-row-details"><p>{event.detail}</p><small>Where this came from · {event.provenance}</small>
-                <button className="quiet-link" onClick={()=>openHistoryEvent(key,event)}>Open linked record or review <ArrowRight size={14}/></button>
+                {scenarioIds.length > 1 && <small>Related to {scenarioIds.map((key) => SCENARIOS[key].label).join(' · ')}</small>}
+                {scenarioIds.map((key) => <button key={key} className="quiet-link" onClick={()=>openHistoryEvent(key,event)}>Open {scenarioIds.length > 1 ? SCENARIOS[key].label : 'linked record or review'} <ArrowRight size={14}/></button>)}
               </div>
             </details>)}
             {!historyRows.length&&<p className="empty-message">Mission events will appear here after a reading, check-in, or review action is saved.</p>}
@@ -899,7 +759,7 @@ export default function AsterApp() {
         {activePage === 'investigations' && (!reviewOpen ? <ReviewOverview snapshot={viewSnapshot!} home={false} onOpen={openReview}/> :
           <GuidedReview scenario={scenarioId} workspace={workspace} now={scenarioTime} guidance={guidance} onAction={doReviewAction} onBack={()=>setReviewOpen(false)} onSkip={skipOption} onRestore={restoreOptions} onInspect={markInspection} inspectionOpen={inspectionOpen} onInspectionOpen={setInspectionOpen} onClose={()=>changeReviewStatus(true)} onReopen={()=>changeReviewStatus(false)}
             followups={workspace.tasks.filter(t=>t.episodeId===investigation.id).length>0 && <section className="review-followups"><h2>Follow-ups</h2>{workspace.tasks.filter(t=>t.episodeId===investigation.id).map(task=><button key={task.id} className="followup-link" onClick={()=>setReviewTaskId(task.id)}><strong>{task.status==='complete'?'Reviewed':task.resultId?'Result ready':Date.parse(task.due)<=nowMs?'Due now':'Planned'}</strong><span>{reviewDate(task.due)}</span><ArrowRight size={14}/></button>)}</section>}>
-            {scenarioId==='recovery' && <div className="review-readings">{(['heart','sleep'] as Metric[]).map(metric=>{const reading=baseReadings.find(r=>r.metric===metric);return <div key={metric}><GradientIcon name={metric}/><span>{METRICS[metric].short}</span><strong className="instrument-value">{reading&&isDisplayableCurrentReading(reading,scenarioTime)?metricValue(reading):'—'}</strong><small>{readingStatus(reading,scenarioTime)}</small></div>;})}</div>}
+            {scenarioId==='recovery' && <div className="review-readings">{(['heart','sleep'] as Metric[]).map(metric=>{const reading=baseReadings.find(r=>r.metric===metric);return <div key={metric}><GradientIcon name={metric}/><span>{METRICS[metric].short}</span><strong className="instrument-value">{reading&&isDisplayableCurrentReading(reading,scenarioTime)?<ReadingValueText observation={reading}/>: '—'}</strong><small>{readingStatus(reading,scenarioTime)}</small></div>;})}</div>}
             <details className="review-disclosure"><summary>{scenarioId==='recovery'?'Trends and readings':'Instrument readings'}<span>{scenarioId==='recovery'?'Compare recent readings with your usual pattern':'Inspect timestamps, units, and source records'}</span></summary>
               {scenarioId==='recovery'?<><div className="metric-toggle" style={selectionGradientStyle(selectedMetric)}><button aria-pressed={selectedMetric==='heart'} style={selectionGradientStyle('heart')} onClick={()=>selectMetric('heart')}>Pulse</button><button aria-pressed={selectedMetric==='sleep'} style={selectionGradientStyle('sleep')} onClick={()=>selectMetric('sleep')}>Sleep</button></div>{activeComparison&&<TrendChart comparison={activeComparison} points={recentPoints.map(item=>({id:item.id,at:item.at,value:Number(item.value),unit:item.unit}))} selectedId={selectedRecordId} onSelect={observePoint}/>}<p className="plain-note">Your usual pattern is a historical comparison, not a clinical reference range.</p>{savedReading&&<ObservationDetails observation={savedReading}/>}<button className="quiet-link" onClick={()=>setAnatomyOpen(true)}>Explore body</button></>
                 :scenarioId==='cabin'?<CabinPanel readings={workspace.cabinReadings} now={scenarioTime}/>:<RadiationPanel readings={workspace.radiationReadings} now={scenarioTime} selectedId={selectedInstrumentId} onSelect={setSelectedInstrumentId}/>}
@@ -957,21 +817,6 @@ export default function AsterApp() {
     {scheduleOpen&&<AsterDialog title="Plan a follow-up" onClose={()=>setScheduleOpen(false)}><form className="entry-form" onSubmit={e=>{e.preventDefault();const value=new FormData(e.currentTarget).get('due');addReviewTask(typeof value==='string'?value:'');}}><p>Choose when to check {REVIEW_NAMES[scenarioId].toLowerCase()} again.</p><label className="settings-field">Follow-up time (mission UTC)<input name="due" type="datetime-local" required value={followupDue} onChange={e=>setFollowupDue(e.target.value)} min={new Date(nowMs+60000).toISOString().slice(0,16)}/></label><p className="plain-note">Current mission time: {stamp(scenarioTime)}. This saves a reminder; it does not add new readings.</p>{formError&&<p role="alert">{formError}</p>}<button className="primary-button" type="submit">Save follow-up</button></form></AsterDialog>}
     {viewedTask&&<AsterDialog title="Follow-up" onClose={()=>setReviewTaskId(null)}><h3>{viewedTask.title}</h3><p>Planned for {reviewDate(viewedTask.due)}</p>{taskResult?<><section className="result-comparison"><div><span>Recorded result</span><strong>{taskResult}</strong></div>{earlierReading&&<div><span>Previous reading · {stamp(earlierReading.at)}</span><strong>{metricValue(earlierReading)}</strong></div>}</section><p className="plain-note">Review the result alongside its collection conditions. Recording or reviewing a result does not close the health review.</p>{taskObservation&&<ObservationDetails observation={taskObservation}/>}<button className="primary-button" disabled={viewedTask.status==='complete'} onClick={()=>completeFollowup(viewedTask)}>{viewedTask.status==='complete'?'Result reviewed':'Mark result reviewed'}</button></>:<><p>No follow-up result has been recorded yet.</p><button className="primary-button" onClick={()=>{setEntryTaskId(viewedTask.id);if(scenarioId==='recovery')selectMetric('heart');setReviewTaskId(null);setEntryKind(scenarioId==='recovery'?'measurement':'check-in');}}>Record follow-up</button></>}</AsterDialog>}
 
-    {showPresenter && <PresenterDrawer scenarioId={scenarioId} workspace={workspace} runningClock={runningClock}
-      linkDelayMinutes={snapshot.settings.linkDelayMinutes} onLinkDelay={(minutes)=>commitSnapshot(current=>({...current,settings:{...current.settings,linkDelayMinutes:minutes}}))} onClose={() => {
-        setShowPresenter(false);
-        commitSnapshot((current) => ({ ...current, settings: { ...current.settings, presenterOpen: false } }));
-      }} onToggleClock={() => {
-        const next = !runningClock;
-        setRunningClock(next);
-        if (!next) commitSnapshot((current) => evolveScenarioClock(current, playbackRef.current));
-      }} onAdvanceClock={advanceClock} onScenario={setScenario} onBranch={presenterBranch} onReset={resetScenario}
-      onSimulateDelivery={simulateDelivery} onMarkReviewed={(handoffId) => commitWorkspace((current, snapshotNow) => ({
-        ...current, handoffs: current.handoffs.map((item) => item.id === handoffId ? { ...item, status: 'reviewed' } : item),
-        events: [...current.events, createEvent(snapshotNow.activeScenario, 'handoff', snapshotNow.scenarioNow,
-          'Review marked', 'Ground review state selected by presenter.', 'Presenter-controlled handoff state')],
-      }))} />}
-
     {supportOpen && <AsterDialog title="Prepare review summary" onClose={()=>setSupportOpen(false)}>
       <div className="handoff-notice"><Info size={16}/> Saved locally; no message is sent.</div>
       <label className="settings-field">Investigation summary<textarea rows={4} value={handoffDraft} onChange={(event) => setHandoffDraft(event.target.value)} placeholder={`${scenario.title}. ${scenario.lead}`}/></label>
@@ -994,8 +839,8 @@ export default function AsterApp() {
           <label className="settings-field">When and under what conditions?<select name="context" defaultValue="" required><option value="" disabled>Choose the conditions used</option>{METRICS[selectedMetric].contextOptions.filter((item) => item !== 'Not recorded').map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
           <label className="settings-field">Optional note<textarea name="note" rows={2} placeholder="Add a detail that may help later review"/></label>
         </> : <>
-          <label className="settings-field">What would you like to record?<select name="kind" defaultValue={scenarioId==='cabin'?'symptom':'check-in'}>{['check-in', 'symptom', 'workload', 'sleep quality', 'meal / hydration', 'exercise'].map((kind) => <option value={kind} key={kind}>{kind[0].toUpperCase() + kind.slice(1)}</option>)}</select></label>
-          <label className="settings-field">What would you like to record?<textarea name="value" required rows={4} value={checkInText} onChange={(event) => setCheckInText(event.target.value)} placeholder="Use your own words. You may skip a sensitive check-in." autoFocus/></label>
+          <label className="settings-field">Check-in type<select name="kind" defaultValue={scenarioId==='cabin'?'symptom':'check-in'}>{['check-in', 'symptom', 'workload', 'sleep quality', 'meal / hydration', 'exercise'].map((kind) => <option value={kind} key={kind}>{kind[0].toUpperCase() + kind.slice(1)}</option>)}</select></label>
+          <label className="settings-field">What did you notice?<textarea name="value" required rows={4} value={checkInText} onChange={(event) => setCheckInText(event.target.value)} placeholder="Use your own words. You may skip a sensitive check-in." autoFocus/></label>
           <label className="settings-field">Optional note<textarea name="note" rows={2} placeholder="Optional context"/></label>
           <p className="input-footnote">You can describe symptoms, fatigue, sleep quality, or anything else you noticed. Private by default; excluded from sharing unless you opt in.</p>
         </>}

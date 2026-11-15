@@ -7,13 +7,10 @@ const MAIN_NAV: Array<{ id: Page; label: string }> = [
   { id: 'log', label: 'Home' },
   { id: 'measurements', label: 'My readings' },
   { id: 'investigations', label: 'Health reviews' },
-  { id: 'care', label: 'Care plan' },
-  { id: 'history', label: 'History' },
 ];
 
 const SECONDARY_NAV: Array<{ id: Page; label: string }> = [
   { id: 'reference', label: 'Help & sources' },
-  { id: 'medical', label: 'Medical support' },
   { id: 'settings', label: 'Settings' },
 ];
 

@@ -41,13 +41,14 @@ export function GuidedReview({scenario,workspace,now,guidance,onAction,onBack,on
     <section className="guided-next"><h2>{closed?'Continue this review':'Your next step'}</h2><p>{guidance.next.reason}</p><button className="primary-button" onClick={()=>onAction(guidance.next)}>{guidance.next.label}<ArrowRight size={16}/></button></section>
     {scenario!=='recovery'&&<details className="review-disclosure" ref={inspectionRef} open={inspectionOpen} onToggle={e=>onInspectionOpen(e.currentTarget.open)}><summary>Check the instrument <span>Source, timing, and missing data</span></summary><p>Record what you inspected. This does not repair a sensor or remove a data gap.</p><div className="review-checklist">{checks.map(item=><label key={item.id}><input type="checkbox" checked={!!workspace.reviewProgress?.inspections[item.id]} onChange={()=>onInspect(item.id)}/><span>{item.label}</span></label>)}</div></details>}
     {children}
-    </div><aside className="guided-side">{followups}
+    {followups}
+    <aside className="guided-side">
     {!closed&&<details className="review-disclosure other-actions"><summary>Other actions <span>Optional tools for this review</span></summary>{guidance.optional.map(action=><div className="optional-action" key={action.id}><button className="text-button" onClick={()=>onAction(action)}>{action.label}<ArrowRight size={14}/></button><p>{action.reason}</p>{['context','reaction'].includes(action.id)&&<button className="quiet-link" onClick={()=>onSkip(action.id)}>Skip for this review</button>}</div>)}
       {!!workspace.reviewProgress?.skipped.length&&<button className="quiet-link" onClick={onRestore}>Show skipped options</button>}
       <button className="text-button" onClick={()=>onAction({id:'schedule-extra',kind:'schedule',label:'Plan another follow-up',reason:''})}>Plan a follow-up</button>
     </details>}
     <details className="review-disclosure"><summary>Finish or reopen <span>Keep a record of your decision</span></summary><p>Closing saves this review. It does not mean a health concern is resolved or cancel any pending follow-ups.</p><button className="secondary-button" onClick={closed?onReopen:onClose}>{closed?'Reopen review':'Close this review'}</button></details>
-    </aside></div></>;
+    </aside></div></div></>;
 }
 
 export function AsterDialog({title,onClose,children}:{title:string;onClose:()=>void;children:ReactNode}) {

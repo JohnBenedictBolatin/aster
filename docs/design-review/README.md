@@ -1,20 +1,36 @@
-# Aster browser preview
+# Aster browser app
 
-The Aster workspace is built with React, TypeScript, Vite, React Three Fiber, and bundled reference assets.
+This folder contains the Aster experience: a local reading log, personal-history comparisons, three guided mission reviews, follow-up tasks, and source notes. See the [feature guide](../FEATURES.md) for a screen-by-screen overview and the limits of each demonstration.
 
-The hosted browser demo is [Aster on GitHub Pages](https://johnbenedictbolatin.github.io/aster/). It requires internet to load, needs no account, and keeps entries in the current browser on the current device.
+## Run the browser version
+
+Install Node.js and npm, then run these commands from this folder:
 
 ```powershell
 npm ci
 npm run dev:web
 ```
 
-Open the local URL Vite prints (starts at `http://127.0.0.1:4174/` and advances to another port if needed). Keep the server running while you review changes; edits update in the browser automatically. Create a browser bundle with `npm run build`. The preview uses IndexedDB with a localStorage fallback and needs no API key or account.
+Open the local address printed by Vite (normally `http://127.0.0.1:4174/`). The hosted demo is [Aster on GitHub Pages](https://johnbenedictbolatin.github.io/aster/). The page needs internet to load, but its scenario records and summaries are bundled. Browser records stay in the current browser on the current device; they are not synced.
 
-The primary destinations are **Home**, **My readings**, and **Health reviews**. **Help & sources** and **Settings** are secondary; presenter controls open separately. Manual entries, follow-up actions, notes, handoffs, and investigation changes persist locally. Browser Web Bluetooth is optional; live records are stored separately from investigation records. NASA and Canadian Space Agency source summaries are bundled; external source pages open only when selected.
+To check the browser build, run:
 
-For Windows desktop setup, see [the root README](../../README.md) and [delivery plan](../../docs/DELIVERY-PLAN.md). The Tauri/SQLite vault and native BLE code compile, and the NSIS installer is generated under `src-tauri/target/release/bundle/nsis/`. Installing it and verifying saved records across restart remain outstanding; physical BLE hardware has not been tested.
+```powershell
+npm run build
+```
+
+## Windows desktop build
+
+The desktop version packages the same interface with Tauri 2 and Rust. Its local records use SQLite. Install the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/) and the Tauri CLI, then run `npm run desktop:dev` or `npm run desktop:build` from this folder.
+
+The Windows application and installer have compiled successfully. The install, save-and-reopen flow, and connection to a physical heart-rate wearable still need hands-on validation; see the [delivery plan](../DELIVERY-PLAN.md).
+
+## Technology
+
+The interface uses React and TypeScript, with Vite for the browser build. React Three Fiber and Three.js display the reference anatomy; Recharts displays trends. The Tauri desktop shell uses Rust commands and SQLite. The browser saves through IndexedDB with a localStorage fallback. Optional heart-rate capture uses Web Bluetooth where supported; it is not required to use the scenario reviews.
+
+The project has no cloud backend or account. Its guided suggestions come from local, versioned demonstration rules. It does not use an AI health service.
 
 ## Anatomy assets and attribution
 
-The BodyParts3D body surface and system meshes are locally bundled. The heart and lung meshes are separately licensed source assets. Attribution and adaptations are documented in `public/assets/anatomy/LICENSE.md` and adjacent credit files. Rebuild the grouped body asset with `scripts/prepare_bodyparts3d.py`.
+Body and organ models are bundled as reference assets. Read [`public/assets/anatomy/LICENSE.md`](public/assets/anatomy/LICENSE.md) and the adjacent attribution files before reuse. The grouped body asset can be rebuilt with `scripts/prepare_bodyparts3d.py`.
